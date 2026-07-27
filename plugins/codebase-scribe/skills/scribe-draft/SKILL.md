@@ -321,7 +321,7 @@ Immediately after writing the topic file, extract 15-20 factual claims from the 
 
 **Claim ID scheme:** `<topic-slug>-<sequential-number>` (e.g., `backend-architecture-1`, `graph-engine-3`). IDs increment forever — never reuse a retired ID.
 
-**ID stability:** Before extracting, read existing `.claims.yml` if it exists. Match new claims to existing ones by exact match on `{type, topic}` and first 50 characters of the claim text. Matched claims keep their existing ID. Only genuinely new claims get the next sequential ID for that topic. When assigning new sequential IDs, skip any IDs in `_retired_ids` for that topic. For existing claims without an `id` field, assign IDs on first read.
+**ID stability:** Before extracting, read existing `.claims.yml` if it exists. Match new claims to existing ones by exact match on `{type, topic}` and first 50 characters of the claim text. Matched claims keep their existing ID. Only genuinely new claims get the next sequential ID for that topic. When assigning new sequential IDs, skip any IDs in `_retired_ids` for that topic **and every id named in that topic's frontmatter `decisions:` (both active and retired entries)**. For existing claims without an `id` field, assign IDs on first read.
 
 Use only these five types:
 
@@ -360,7 +360,7 @@ claims:
 - Claims from user answers (Steps 6 or 7): `origin: user`, `context` captures the reasoning, `recorded` is the date
 - Claims missing `provenance` default to `origin: inferred` for all purposes
 
-When a claim is deleted (e.g., decision drift resolution), add its ID to a `_retired_ids` list in `.claims.yml` to prevent reuse. When assigning new sequential IDs, always skip any IDs in `_retired_ids` for that topic.
+When a claim is deleted (e.g., decision drift resolution), add its ID to a `_retired_ids` list in `.claims.yml` to prevent reuse. When assigning new sequential IDs, always skip any IDs in `_retired_ids` for that topic and every id named in that topic's frontmatter `decisions:` (active and retired).
 
 Append claims to `docs/agents/.claims.yml`. Include `_meta` with the topic's current git SHA as `<topic>_extracted_at`.
 

@@ -133,7 +133,7 @@ Read `docs/agents/.claims.yml`. For each topic:
 
 Re-extraction: read the topic file content and extract up to 15-20 factual claims using the five claim types (technology, pattern, data_flow, boundary, constraint).
 
-**When re-extracting claims**, read existing `.claims.yml` first and preserve IDs for claims that match by exact match on `{type, topic}` and first 50 characters of the claim text. Only assign new IDs for genuinely new claims. Preserve `provenance` fields from existing claims — do not overwrite user-provided provenance with inferred.
+**When re-extracting claims**, read existing `.claims.yml` first and preserve IDs for claims that match by exact match on `{type, topic}` and first 50 characters of the claim text. Only assign new IDs for genuinely new claims. When assigning new sequential IDs, skip any IDs in `_retired_ids` for that topic and every id named in that topic's frontmatter `decisions:` (both active and retired entries) — unguarded, a reworded decision claim could orphan its id, maintain could hand it to a new claim, and a later re-link would duplicate it. Preserve `provenance` fields from existing claims — do not overwrite user-provided provenance with inferred.
 
 Claims missing a `provenance` field default to `{ origin: inferred }` for all purposes including drift detection.
 

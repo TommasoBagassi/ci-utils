@@ -53,6 +53,26 @@ Detached HEAD: `main-only` refuses; `branch-local` proceeds with `current_branch
 | Yes | No | **Orphan mode** → generate AGENTS.md hub from existing topic frontmatter (see below), then Step 3 |
 | Yes | Yes | **Normal mode** → Step 3 |
 
+#### Gitignore seeding
+
+Idempotently ensure `.gitignore` contains `.scribe/` and `<docs_dir>/.claims.yml`: create `.gitignore` if it does not exist; append each entry only if not already present (skip if present); skip the claims entry when the resolved `docs_dir` is already under an ignored path. Report any `.gitignore` modification in the Step 13 summary.
+
+#### Claims migration (kiali migration)
+
+Runs after gitignore seeding, still in Phase 0 Step 1; per-decision idempotent.
+
+**Trigger, split in two:** the frontmatter *reconstruction* triggers whenever `<docs_dir>/.claims.yml` exists and holds `origin: user` claims — tracked or not, so an untracked-but-present cache still migrates its provenance. Only the *untrack* step is additionally gated on trackedness (`git ls-files --error-unmatch <docs_dir>/.claims.yml` succeeding) AND an AskUserQuestion approval.
+
+**Selection and mapping:** select claims with `provenance.origin: user` only. For each, write a `decisions:` entry on its topic: `id`←claim.id, `type`←claim.type, `claim`←claim.claim, `context`←provenance.context, `recorded`←provenance.recorded, `source`←claim.source, `status: active`. (Full schema: `id`, `type`, `claim`, `context`, `recorded`, `source`, `status: active|retired`, plus optional `resolved_at` — that field is written by Decision Drift Resolution, not by this migration.)
+
+**Per-decision idempotency:** skip a decision whose `{type, topic, first-50-chars of claim text}` already exists in the target topic's frontmatter `decisions:`.
+
+**Section credit, deterministic:** add the target section's slug to `human_sections` only when exactly one `##` section's body contains the claim text. No match or multiple matches → record the decision without a section credit — this one-shot migration writes a scored committed field on the only real deployment, so the rule is not left to judgment.
+
+The frontmatter reconstruction proceeds unconditionally. The `git rm --cached <docs_dir>/.claims.yml` is gated behind an AskUserQuestion — the plugin is otherwise purely a file-writer, the trigger fires in any repo with a committed cache, and an unannounced staged deletion could ride into a user's unrelated commit. The trigger is self-disarming once untracked, so a declined prompt simply re-asks on a later run.
+
+The staged untrack and any `.gitignore` modification are reported in the Step 13 summary with an instruction to commit.
+
 #### Orphan mode hub generation
 
 When docs_dir exists but AGENTS.md is missing, generate a minimal hub:
@@ -328,7 +348,7 @@ Then check whether the human gate (9e) should fire: if the run is autonomous, th
    - The current topic file content
    - The critical findings list
    - The source files cited in findings
-   - `default_branch`, `branching_strategy`, `current_branch`, `shallow: true|false`
+   - `default_branch`, `branching_strategy`, `current_branch`, `shallow: true|false`, and `watch_paths` (the repaired value from Step 3)
 3. After rework completes, re-invoke `scribe-review` via the `Skill` tool (scoped re-review), passing as `args`:
    - Include `previous_findings` from the last review
    - Include `rework_iteration: 1`
@@ -494,6 +514,11 @@ Options:
 ### Step 13: Summary
 
 Print: mode, branch, topics worked, budget used, scores table, contradictions count. If all topics are `complete`, also print: "All topics are complete." Then print: standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md, CLAUDE.md, GEMINI.md, docs/upstream.md), suggested next action.
+
+Also print, when they occurred this run:
+- Any `.gitignore` modification (seeding or the migration's untrack) and the staged claims-file untrack, each with an instruction to commit.
+- Preserved single-segment `watch_paths` entries that resolve to neither an existing directory nor an existing file (Step 3's watch-path repair).
+- Colliding topic names from discover, with a rename suggestion.
 
 Suggested next actions by mode:
 - After **seed/discover**: "Run `/codebase-scribe` again to draft content for the stubs."
