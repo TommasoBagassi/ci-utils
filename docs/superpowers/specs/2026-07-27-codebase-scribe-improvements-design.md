@@ -260,8 +260,11 @@ is rewritten to name `escalated`).
 **Other stored-SHA consumers (full clones):** on an unresolvable/unreachable SHA,
 maintain §1 reports full churn **without running its diff** (feeding §2's drift
 table its input), and §4/§5/§8 skip their diff-derived branches; Step 4 discards a
-session whose `last_active_sha` fails the same test; `_meta.<topic>_extracted_at`
-needs no guard (equality-only; mismatch → re-extract, the safe direction).
+session whose `last_active_sha` fails the same test; **`resolved_at` on a
+`decisions:` entry is the fourth guarded consumer** (handling specified at its
+point of use in §4: ignored when unresolvable, diff falls back to `scan`);
+`_meta.<topic>_extracted_at` needs no guard (equality-only; mismatch →
+re-extract, the safe direction).
 
 ### Freshness/scan self-certification closed (Goal 3, fourth mechanism)
 
@@ -670,8 +673,10 @@ self-consistent.
   2. §5 + §4's gitignore seeding + snapshot-deletion site (Step 1) — **so
      `.scribe/` is ignored before §3's snapshots are ever written**.
   3. §3 (agent, dispatching-stub reduction, brief contract, M2 reduction,
-     snapshots), gated by the **three-question** pre-check (agent dispatchability,
-     identifier form, eval-runner report surfacing).
+     snapshots), gated by the **two-question Cursor pre-check** (agent
+     dispatchability, identifier form), with question 3 (eval-runner report
+     surfacing) as an in-wave verification whose failure branch is the
+     derived-copy fallback.
   4. §4 remainder.
   5. §6 (strip, then P2), §7, §8.
   6. **Evals:** regenerate all four suites in place against final contracts
