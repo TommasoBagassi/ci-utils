@@ -175,9 +175,12 @@ their diff-based branches.
   legitimately allows files in discovery-approved watch_paths, their parent is the
   repo root, and widening them to `.` would make the topic drift on every commit and
   redraft perpetually via the `drifted` row. File entries are valid git diff scopes,
-  so preserving them costs nothing. Discovery-time file entries are intentional and
-  never repaired; the repair targets only the old draft-§9 narrowing artifacts.
-  Without this repair, the forward-only rule leaves kiali's drift detection crippled.
+  so preserving them costs nothing. The repair is purely mechanical — frontmatter
+  records no provenance, so origin (Step 2b approval vs old draft-§9 narrowing) is
+  not distinguishable: subdirectory file entries are widened regardless of origin
+  (over-widening a deliberately approved file costs only extra drift sensitivity);
+  root-level file entries are preserved regardless of origin. Without this repair,
+  the forward-only rule leaves kiali's drift detection crippled.
 - **Classification consequence (deliberate change):** widening watch_paths enlarges
   the completeness denominator (referenced depth-1 subdirs / total subdirs), so scores
   drop. Under the current rules that would mass-classify topics as `undercooked`
@@ -190,7 +193,10 @@ their diff-based branches.
   never auto-redrafted for low completeness;
   low scores surface in STATUS.md and as review `COVERAGE_GAP` minors. The forced-
   redraft path for damaged topics remains maintain §9's escalation (`escalated` flag +
-  `completeness: 0`), which is an explicit, bounded trigger.
+  `completeness: 0`), which is an explicit, bounded trigger — and maintain §9 step 1's
+  parenthetical ("this triggers the `undercooked` classification in the orchestrator's
+  Step 5") is rewritten to name the `escalated` classification, which is what actually
+  routes it once completeness no longer drives `undercooked`.
 
 ### Branch gate (M7)
 
@@ -213,8 +219,9 @@ off-branch — the run refuses with the existing "tell user" wording, it does no
 **Acceptance:** a repo with dangling, unreachable, or `"HEAD"` scan values classifies
 those topics `drifted` and their frontmatter (and therefore STATUS.md) shows
 `freshness: 0`; a topic with `scan: null` and a real body classifies `undercooked`;
-file-level watch_paths are rewritten to parent directories on the first run and drift
-classification for them works from that point on; committing a new file into a watched
+subdirectory file-level watch_paths are rewritten to parent directories on the first
+run (root-level file entries preserved) and drift classification for them works from
+that point on; committing a new file into a watched
 directory classifies the topic drifted on the next run; a `main-only` run on a
 non-default branch refuses at Step 0 and — if reached by any path — 9f/draft/maintain
 refuse to stamp freshness or scan; a `branch-local` run still finalizes normally; a
@@ -607,6 +614,14 @@ self-consistent (no reference to a case number that no longer exists).
 
 ## Revision log
 
+- **rev 2.3 (2026-07-27):** closes the three wording-level residuals from the second
+  fix-verification round (both verifiers confirmed all substantive findings closed):
+  the watch-path repair is stated as purely mechanical (origin is not recorded, so
+  subdirectory file entries widen regardless of origin; root-level entries preserved
+  regardless of origin — the prior "discovery-time entries are never repaired"
+  sentence was not decidable); the §2 acceptance line carries the root-file
+  carve-out; maintain §9 step 1's parenthetical is rewritten to name the `escalated`
+  classification (it named `undercooked`, which no longer consults completeness).
 - **rev 2.2 (2026-07-27):** fixes for reviewer A's fix-verification findings (its two
   overlaps with reviewer B's were already fixed in rev 2.1): watch-path repair
   preserves root-level file entries instead of widening them to `.` (which would have
