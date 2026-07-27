@@ -22,7 +22,7 @@ You receive from the orchestrator:
 - Whether this is SME/focus mode (and the focus description + confirmed code paths)
 - Any user-provided context string
 - Current session progress (which topics are done/pending)
-- `default_branch`, `branching_strategy`, `current_branch`, and `shallow: true|false` — use the passed values; never re-detect
+- `default_branch`, `branching_strategy`, `current_branch`, `shallow: true|false`, and `watch_paths` (the repaired value from Step 3) — use the passed values; never re-detect
 
 Read `.scribe.yml` if it exists for budget and content settings.
 
@@ -38,7 +38,7 @@ You receive from the orchestrator:
 - The current topic file content (post-review)
 - A list of critical findings (each with: tag, location in doc, evidence, suggestion)
 - The source files cited in findings' evidence fields
-- `default_branch`, `branching_strategy`, `current_branch`, and `shallow: true|false` — use the passed values; never re-detect
+- `default_branch`, `branching_strategy`, `current_branch`, `shallow: true|false`, and `watch_paths` (the repaired value from Step 3) — use the passed values; never re-detect
 
 ### Rework Pipeline
 
@@ -309,14 +309,10 @@ These scores are non-negotiable for draft output:
 - **Human Input:** calculate as (sections NOT in `inferred_sections` / total sections) x 100. If no user answered any design decision questions during this draft, the score is 0. If the user provided answers and sections were removed from `inferred_sections` per HARD RULE #4, the score reflects that immediately.
 - **Completeness:** calculate this one. Count depth-1 subdirectories of each watch_path. Completeness = (subdirectories with at least one file referenced in the doc / total subdirectories) x 100.
 
-### 9. Update Watch Paths
-
-Replace the default watch_paths (set by discover) with the precise paths of files you actually read. This makes future drift detection accurate.
-
 ### 10. Write Topic File
 
 Write the complete topic file with:
-- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths, empty stale_flags)
+- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags)
 - Markdown content following the structure above
 
 ### 11. Extract Claims
