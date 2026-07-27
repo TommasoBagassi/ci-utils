@@ -93,7 +93,15 @@ value; both survive verbatim in the rewritten frontmatter.
   marker, or has `migration_source`" — the `<50 words` conjunct is dropped. (Without
   this, a 30-word hand-authored topic is simultaneously mature to the hook, `stub` to
   Step 5, and `undercooked` to §2 — three components disagreeing about one file, with
-  Step 5's priority-1 row winning and shadowing §2's crashed-draft route.)
+  Step 5's priority-1 row winning and shadowing §2's crashed-draft route.) Two
+  clarifications: the `migration_source` disjunct is a Step-5-only *routing* signal
+  (a migrated topic must be drafted), intentionally absent from the hook's and the
+  contract's *maturity* test — the shared test is the body test; and dropping the
+  word count is an **accepted regression** for one rare state: a draft truncated
+  after writing a short real body AND a valid `scan` now lands on the `current`
+  default instead of being caught at priority 1 — maintain §7's structural and
+  actionability checks are the (advisory) backstop, and re-complicating the row for
+  a crash state was judged worse than the disagreement it caused.
 
 ### Enforcement split
 
@@ -179,11 +187,15 @@ validated. **`scan: null` is never a validation failure** — it is handled excl
 by the classification rule below (a null scan failing the shape test would classify
 `drifted` at priority 3 and shadow the `undercooked` route this section defines).
 
-- **Shallow-clone gate first:** if `git rev-parse --is-shallow-repository` is `true`,
-  skip scan validation entirely and warn, per Error Handling #4 ("shallow clone — skip
-  git-dependent features") — in a `--depth=1` clone every historical object is beyond
-  the graft boundary and validation would mass-write `freshness: 0` into every topic
-  of a perfectly healthy repo.
+- **Shallow-clone gate first — and it covers every stored-SHA consumer, not just the
+  validator:** if `git rev-parse --is-shallow-repository` is `true`, skip scan
+  validation AND all diff-based classification and maintenance branches (Step 5's
+  classification diff, maintain §1/§4/§5/§8, the Step 4 session-SHA check) and warn
+  once, per Error Handling #4 ("shallow clone — skip git-dependent features"). Topics
+  classify from body and frontmatter state alone; no frontmatter is degraded. In a
+  `--depth=1` clone every historical object is beyond the graft boundary — validation
+  would mass-write `freshness: 0` into every topic of a healthy repo, and the diff
+  consumers would error against the same objects for the same reason.
 - **Shape:** must match `^[0-9a-f]{7,40}$` (the README's own example `"a1b2c3d4"` is
   8 hex chars and must remain valid; the literal `"HEAD"` fails this test).
 - **Resolution and reachability:** `git cat-file -e <sha>` AND
@@ -217,9 +229,14 @@ seed) reads frontmatter only, so the degraded value must be persisted where they
   They remain the directory globs set at discovery/approval.
 - **One-time repair (required for kiali):** at Step 3, the repair applies to every
   watch_paths entry, with the file-vs-directory test defined **by path shape, not
-  filesystem state**: an entry that does not resolve to an existing directory is
-  replaced by its parent (the path minus its last `/`-segment), deduplicated; an entry
-  with no `/` (repo-root level: `Makefile`, `Dockerfile`) is preserved as-is. This
+  filesystem state**. **Normalize trailing slashes first** (discover-approved
+  directory entries are written as `cmd/`, `pkg/` — a since-renamed top-level
+  directory must not be widened to the repo root). Then: an entry that does not
+  resolve to an existing directory is replaced by its parent (the normalized path
+  minus its last `/`-segment), deduplicated; **an entry that is a single path segment
+  after normalization is preserved as-is** — this covers both root-level files
+  (`Makefile`, `Dockerfile`) and top-level directories (`frontend/` renamed to
+  `web/`), whose "parent" would be the repo root. This
   handles existing files, **and files that were renamed or deleted after drafting** —
   the expected kiali case, where a `test -f` based rule would silently preserve
   dangling entries as permanently drift-blind diff scopes. The repair is purely
@@ -330,12 +347,19 @@ and is not redrafted.
 - **M2 dedup, reinstated (rev 2's "they only point at Step 9" was a false premise —
   both sections restate substeps 9a–9f with paraphrased behavior, including a third
   "update scan SHA" statement outside §2's writer list and a divergent stub-check
-  rule):** draft's Review Gate and maintain §12 are each reduced to: "Follow Step 9
-  (Review Orchestration) in `commands/codebase-scribe.md` for every topic modified in
-  this pass — dispatching reviews via the `codebase-scribe:scribe-review` agent as
-  Step 9c specifies — and return to the orchestrator only after it completes for all
-  of them." The numbered substep restatements are deleted. Substeps 9a–9f then exist
-  only in the command.
+  rule):** draft's Review Gate and maintain §12 are each reduced to a pointer.
+  **Draft's version RETAINS its current first line** — "Skip this section when in
+  rework mode — the orchestrator handles scoped re-review via Step 9d." — which is a
+  guard, not a substep restatement: rework is invoked *from* 9d, and without the
+  guard a reworked draft would dispatch a nested review while 9d is mid-cycle,
+  recursing outside the 2-iteration cap. Draft's reduced text: "Skip this section
+  when in rework mode — the orchestrator handles scoped re-review via Step 9d.
+  Otherwise: follow Step 9 (Review Orchestration) in `commands/codebase-scribe.md`
+  for every topic modified in this pass — dispatching reviews via the
+  `codebase-scribe:scribe-review` agent as Step 9c specifies — and return to the
+  orchestrator only after it completes for all of them." (Maintain has no rework
+  mode; its version omits the first sentence.) The numbered substep restatements are
+  deleted. Substeps 9a–9f then exist only in the command.
 - **Recommendation lines (P3):** the referenced slash commands
   (`/codebase-scribe:scribe-maintain`, `:scribe-draft`) do not exist. The maintain-vs-
   redraft signal is kept, the fake commands are not: "Run `/codebase-scribe` again —
@@ -484,7 +508,11 @@ list):
 - **Settling:** at `question_passes: 2`, the topic stops classifying `unverified` and
   classifies `current`. **The reset to 0 is written by 9f** when the just-computed 9a
   classification is `new_draft` or `major_rewrite` (a redrafted topic is legitimately
-  re-questionable) — the pass increments, 9f resets; no other writer.
+  re-questionable) — the pass increments, 9f resets. **Fallback when 9f never runs**
+  (Step 9 skipped under `review.enabled: false`, or the user skips review at 9b —
+  both paths bypass 9f): the draft skill itself resets the counter whenever it
+  performs a full redraft of the topic (a stub draft or a drifted/escalated redraft,
+  as opposed to a question pass or a rework edit). No other writer.
 - **Interaction with `questions: false` (§7):** the M3 route is suppressed entirely
   and `unverified` topics classify `current`.
 
@@ -731,6 +759,17 @@ self-consistent (no reference to a case number that no longer exists).
 
 ## Revision log
 
+- **rev 3.1 (2026-07-27):** closes the fix-verification findings on rev 3 (both
+  verifiers confirmed the round-1 sets resolved): draft's Review Gate reduction
+  retains the rework-mode skip guard (without it a reworked draft would dispatch a
+  nested review from inside 9d's cycle); watch-path repair normalizes trailing
+  slashes and preserves any single-segment entry (a renamed top-level directory must
+  not widen to repo root); the shallow-clone gate extended to every stored-SHA
+  consumer and diff branch (topics classify from body + frontmatter alone);
+  `question_passes` reset gains a draft-side fallback for the two paths that bypass
+  9f (`review.enabled: false`, 9b skip); the dropped `<50 words` stub test recorded
+  as an accepted regression with maintain §7 as advisory backstop; the
+  `migration_source` disjunct clarified as Step-5-only routing, not maturity.
 - **rev 3 (2026-07-27):** reworked after voting round 1 (fresh voters C and D, both
   NOT_APPROVED; full union of findings applied). Major changes: cross-cutting
   frontmatter-preservation rule (draft §10's enumerated field list would have
