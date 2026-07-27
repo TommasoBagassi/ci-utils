@@ -349,9 +349,11 @@ classifies `unverified` — that is the question loop working, not a defect).
   **Fallback** (pre-check question 3): if the eval runner's environment cannot
   dispatch the agent through the stub and surface its report in the captured
   conversation, the skill instead carries a protocol copy **mechanically derived
-  from `agents/scribe-review.md`** (regenerated whenever the agent changes —
-  generated duplication with a single canonical source, mirroring code-reviewer's
-  shape without its hand-maintained divergence).
+  from `agents/scribe-review.md`** — with a generation header naming the source
+  file, and the copy added to P4's sync check (alongside the four-way version
+  check) so drift is caught mechanically; regenerated whenever the agent changes.
+  Generated duplication with a single canonical source — mirroring code-reviewer's
+  shape without its hand-maintained divergence.
 - **Brief contract:** brief passed as the Agent tool's **prompt** (no `args`
   parameter exists; 9c/9d item 3 phrasing rewritten); 9c's `source_files` becomes
   paths-only (500-line excerpt clause dropped); the merged agent's Inputs section
@@ -390,11 +392,12 @@ classifies `unverified` — that is the question loop working, not a defect).
 ### Cursor pre-check (gate for the prompts-file deletion and dispatch cutover)
 
 Verify: (1) in both Claude Code and Cursor, plugin-defined agents are dispatchable;
-(2) the exact `subagent_type` identifier; (3) **under the eval runner, invoking the
-dispatching-stub skill surfaces the agent's report in the captured conversation**
-(the judges score `{{ conversation }}` expecting a full review report). If (1) or
-(2) fails in Cursor, stop and surface the decision; if (3) fails, apply the
-derived-copy fallback above.
+(2) the exact `subagent_type` identifier; (3) **an in-wave verification, not a pre-gate** (it needs the stub and agent to
+exist, and today's fixtures supply no Step 9c brief until wave 6): under the eval
+runner, invoking the dispatching-stub skill surfaces the agent's report in the
+captured conversation (the judges score `{{ conversation }}` expecting a full
+review report). If (1) or (2) fails in Cursor, stop and surface the decision;
+if (3) fails, its branch is the non-destructive derived-copy fallback above.
 
 ### Snapshots to disk (M4)
 
@@ -427,7 +430,8 @@ name only `/codebase-scribe`.
 ### Provenance in frontmatter (H2)
 
 `decisions:` schema as ratified (id, type, claim, context, recorded, source,
-status: active|retired).
+status: active|retired, plus optional `resolved_at` — see the decision-drift
+re-flag fix below).
 
 - Preservation: cross-cutting rule 1. Attribution: `human_sections`
   (cross-cutting rule 2).
@@ -497,8 +501,12 @@ entry when the resolved docs_dir is already under an ignored path.
   subsequent draft (Step 8 row 5's "resolve flags first, then draft if needed"
   path) would be re-detected every maintain pass — §4's detection diffs
   `<scan>..HEAD`. Fix: resolution writes `resolved_at: <current HEAD>` on the
-  frontmatter decision entry, and maintain §4 diffs from
-  `max(scan, resolved_at)` for entries that carry it.
+  frontmatter decision entry (an optional field added to the `decisions:` schema),
+  and maintain §4 diffs from **`resolved_at` when it is a descendant of `scan`
+  (`git merge-base --is-ancestor`), else `scan`** — "max" over SHAs is an ancestry
+  test, not a comparison. `resolved_at` is a stored SHA and joins §2's guarded
+  consumer list: if it fails §2's resolution/reachability test, ignore it and diff
+  from `scan` (fail toward re-detection, never away from it).
 
 ### Orchestrator visibility
 
@@ -698,6 +706,15 @@ self-consistent.
 
 ## Revision log
 
+- **rev 5.2 (2026-07-27):** closes the four advisory residuals from the second G/H
+  verification round (all targeted rev-5.1 fixes confirmed clean): derived-copy
+  fallback gains a generation header and joins P4's sync check; `resolved_at`
+  added to the `decisions:` schema and §2's guarded-consumer list, with the
+  SHA "max" defined as an ancestry test failing toward re-detection; pre-check
+  question 3 relabeled an in-wave verification (its artifacts don't exist
+  pre-wave; its failure branch is non-destructive). Also noted, pre-existing and
+  unchanged by the redesign: the stored `human_input` is stale in the window
+  between a Step-3 orphan prune and the next recomputation.
 - **rev 5.1 (2026-07-27):** closes the G/H fix-verification findings on rev 5 (all
   round-3 findings otherwise confirmed resolved): `human_sections` wired into its
   remaining two sites — maintain §8's formula (the steady-state recomputation that
