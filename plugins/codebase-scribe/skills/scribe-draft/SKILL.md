@@ -155,9 +155,9 @@ Also read:
 7. After writing, **remove `migration_source` and `migration_sections` from the frontmatter** — they've been consumed
 8. After drafting, compare the total content from the referenced migration sections against what you wrote. If >20% of the original content by line count wasn't incorporated, flag it: "Some content from the original AGENTS.md was not incorporated into this topic. Review the original at `AGENTS.md.bak` sections: [list]."
 
-**Positive redraft instruction (the §3 rewrite is a template change, not just a check change):** for a non-stub topic, draft preserves the existing top-level heading set and rewrites section bodies in place, adding a TL;DR and a `## Links` section only if absent; the 5-section skeleton applies to stub drafts only.
+**Redraft vs. stub draft:** for a non-stub topic, draft preserves the existing top-level heading set and rewrites section bodies in place, adding a TL;DR and a `## Links` section only if absent; the 5-section skeleton applies to stub drafts only.
 
-Write the topic file following this structure:
+For a stub draft, write the topic file following this structure:
 
 ```markdown
 # [Topic Name]
