@@ -106,6 +106,10 @@ expect_warn stub-no-tldr "$D/stub-no-tldr.md"
 printf 'output:\n  docs_dir: "docs/ai"\n' > "$TMP/repo/.scribe.yml"
 expect_warn custom-docs-dir-absolute "$TMP/repo/docs/ai/t.md"
 rm "$TMP/repo/.scribe.yml"
+# leading-/ docs_dir value: exact path prefix semantics
+printf 'output:\n  docs_dir: "%s/docs/ai"\n' "$TMP/repo" > "$TMP/repo/.scribe.yml"
+expect_warn leading-slash-docs-dir "$TMP/repo/docs/ai/t.md"
+rm "$TMP/repo/.scribe.yml"
 # warnings carry the systemMessage envelope
 out="$(invoke "$D/no-heading.md")"
 printf '%s' "$out" | grep -q '"systemMessage"' && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: envelope"; }
@@ -137,16 +141,21 @@ Requirements (spec §1 "Hook fixes" + "Contract" + "Fence-awareness algorithm" �
 - [ ] **Step 4: Run the harness — expect PASS=all, FAIL=0**
 
 Run: `bash plugins/codebase-scribe/hooks/test-doc-validate.sh`
-Expected: `FAIL=0`, exit code 0. Then exercise the no-jq branch deterministically — shim a PATH with no jq and re-run the whole suite, capturing stderr under the temp dir:
+Expected: `FAIL=0`, exit code 0. Then exercise the no-jq branch deterministically — build a PATH that **genuinely lacks jq** (never a failing jq stub: an executable stub makes `command -v jq` succeed, sends a correct hook down the jq branch to an empty extraction, and fails the suite on correct work):
 
 ```bash
-SHIM="$(mktemp -d)"; for b in bash grep sed awk printf mktemp env rm mkdir cat cd dirname; do :; done
-# minimal shim: expose the standard dirs but shadow jq with a failing stub
-printf '#!/bin/sh\nexit 127\n' > "$SHIM/jq" && chmod +x "$SHIM/jq"
-PATH="$SHIM:/usr/bin:/bin" bash plugins/codebase-scribe/hooks/test-doc-validate.sh 2>"$SHIM/err.log"
-test $? -eq 0 && test ! -s "$SHIM/err.log" && echo NOJQ-OK; rm -rf "$SHIM"
+SHIM="$(mktemp -d)"
+for b in bash sh grep sed awk cat printf mktemp env rm mkdir dirname chmod ln head tail; do
+  q="$(command -v "$b" 2>/dev/null)" && ln -s "$q" "$SHIM/$b"
+done
+if PATH="$SHIM" bash plugins/codebase-scribe/hooks/test-doc-validate.sh 2>"$SHIM/err.log" && test ! -s "$SHIM/err.log"; then
+  echo NOJQ-OK
+else
+  echo "NOJQ-FAIL (suite rc or stderr present):"; cat "$SHIM/err.log"
+fi
+rm -rf "$SHIM"
 ```
-Expected: `NOJQ-OK` (suite passes on the grep/sed path with zero stderr — spec §1’s "no stderr without jq").
+Expected: `NOJQ-OK` (suite passes on the grep/sed path with zero stderr — spec §1’s "no stderr without jq"). If jq is not installed on this machine at all, the plain Step-4 run already exercised the no-jq path — record `command -v jq`’s output in the task notes either way.
 
 - [ ] **Step 5: Update hooks.json matcher**
 
@@ -207,6 +216,7 @@ git commit -m "scribe: two-tier structure contract across draft, maintain, Step 
 - Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 0 (~line 29), Error Handling list (~lines 13–19)
 - Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — Inputs (~lines 18–25), Rework Brief Contents (~lines 34–39)
 - Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — Inputs (~lines 20–24)
+- Modify: `plugins/codebase-scribe/README.md` — config block (gains `default_branch`)
 
 **Interfaces:**
 - Produces: brief fields `default_branch`, `branching_strategy`, `current_branch` (plus `docs_dir` and repaired `watch_paths`, added in Tasks 5/13) documented in all three brief blocks. Tasks 4, 5, 7 rely on skills reading branch state from the brief, never re-detecting.
@@ -229,6 +239,7 @@ Add to draft's Inputs, draft's Rework Brief Contents, and maintain's Inputs: `de
 grep -n "refs/remotes/origin/HEAD" plugins/codebase-scribe/commands/codebase-scribe.md
 grep -n "default_branch" plugins/codebase-scribe/skills/scribe-draft/SKILL.md plugins/codebase-scribe/skills/scribe-maintain/SKILL.md
 grep -n "No remote OR unresolvable" plugins/codebase-scribe/commands/codebase-scribe.md
+grep -n "default_branch" plugins/codebase-scribe/README.md
 ```
 Expected: all three match.
 
@@ -242,7 +253,7 @@ git commit -m "scribe: fail-closed default-branch ladder + branch-state threadin
 ### Task 4: Scan-SHA validation, shallow gate, Step 5 row table, session guard
 
 **Files:**
-- Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 3 (~line 109), Step 4 (~line 119), Step 5 table (~lines 123–135)
+- Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 3 (~line 109), Step 4 (~line 119), Step 5 table (~lines 123–135), Error Handling list (~lines 13–19; Step 3b)
 - Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — §1 (~line 40), §2 table intro, §3 (~line 61), §4 (~line 80), §5 (~line 104), §8 (~line 157), §9 parenthetical (~line 171)
 
 **Interfaces:**
@@ -271,7 +282,7 @@ Append to the command's Error Handling list (that region of `commands/codebase-s
 C=plugins/codebase-scribe/commands/codebase-scribe.md
 grep -n "is-shallow-repository" $C && grep -n "0-9a-f\]{7,40}" $C && grep -n "no other row matched" $C
 grep -n "merge-base --is-ancestor" $C
-grep -n "escalated" $C | head -3   # the escalated row must still be in the Step 5 table
+grep -nE '^\| .escalated. \|' $C   # the escalated ROW itself (line ~128) — an unanchored grep would be satisfied by Step 8 row 3’s prose
 ! grep -n "triggers the .undercooked. classification" plugins/codebase-scribe/skills/scribe-maintain/SKILL.md
 ! grep -n "otherwise current" $C
 ```
@@ -650,7 +661,9 @@ Open a PR to fork main titled "scribe wave 1: drift integrity, structure contrac
 ```bash
 git add plugins/codebase-scribe/skills/scribe-draft/SKILL.md plugins/codebase-scribe/commands/codebase-scribe.md
 git diff --cached --stat                      # exactly the two files
-git diff --cached | grep -ci upstream         # every hunk is upstream content; eyeball the full diff
+# mechanical isolation check: every changed line must mention upstream (case-insensitive)
+git diff --cached -U0 | grep -E '^[+-]' | grep -v '^[+-][+-]' | grep -vi upstream
+# expected: EMPTY output (any surviving line is a non-upstream hunk that must not ride this commit)
 git commit -m "scribe: strip Red Hat upstream.md contextification (revertible; a future revert re-adds upstream as a multiSelect option post-P2)"
 ```
 
@@ -668,9 +681,10 @@ git commit -m "scribe: strip Red Hat upstream.md contextification (revertible; a
 **Files:**
 - Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — content standards (~lines 197–204), HARD RULE 2 + §11 claim counts, §6 zero-question rule
 - Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Error Handling defaults (`questions: true`)
+- Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — §6 re-extraction claim-count sentence
 - Modify: `plugins/codebase-scribe/README.md` — config block
 
-- [ ] **Step 1:** Add the citation rule (symbol-in-file, never bare line numbers) and the volatile-inventory rule to draft's content standards; change "15-20 claims" to "up to 15–20, proportional to content — do not pad small topics" (draft HARD RULE 2, draft §11, AND maintain §6’s re-extraction sentence — add `skills/scribe-maintain/SKILL.md` to this task’s Files); make §6's one-question rule conditional (zero questions allowed when only a conventional-choice fallback remains).
+- [ ] **Step 1:** Add the citation rule (symbol-in-file, never bare line numbers) and the volatile-inventory rule to draft's content standards; change "15-20 claims" to "up to 15–20, proportional to content — do not pad small topics" (draft HARD RULE 2, draft §11, AND maintain §6’s re-extraction sentence — maintain’s SKILL.md is in this task’s Files); make §6's one-question rule conditional (zero questions allowed when only a conventional-choice fallback remains).
 - [ ] **Step 2:** Add flat `questions: true` to the defaults list and README config block with the suppression list (suppresses draft §5/§6/§7, Wrap-Up, M3 route; NOT Standard Files, splits, ownership, Decision Drift Resolution) and the Human-Input-pinning note.
 - [ ] **Step 3: Verify:** `grep -n "questions" plugins/codebase-scribe/commands/codebase-scribe.md | head -3`; `grep -n "proportional" plugins/codebase-scribe/skills/scribe-draft/SKILL.md`.
 - [ ] **Step 4: Commit** — `git commit -am "scribe: citation/inventory standards, proportional claims, questions toggle (spec §7)"`
