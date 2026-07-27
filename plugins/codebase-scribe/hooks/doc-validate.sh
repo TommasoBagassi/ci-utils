@@ -5,6 +5,12 @@
 # marker) need the 5-section skeleton plus TL;DR. Always exits 0; never writes to
 # stderr. SCRIBE_NO_JQ=1 forces the grep/sed extraction path — test-only, so the
 # fallback branch is exercisable deterministically on machines that do have jq.
+# The grep/sed fallback unescapes \\, \" and \/ in file_path (the sequences a real
+# path can contain); \uXXXX is not decoded. Windows-shaped paths (drive-letter or
+# UNC) are normalized from backslash to forward-slash separators before matching;
+# under a leading-/ (exact-prefix) docs_dir on Windows, the configured value and
+# the incoming path can be in different path universes (/c/... vs C:/...), so
+# exact-prefix matching there is best-effort.
 input=$(cat)
 
 extract_file_path_jq() {
@@ -12,7 +18,16 @@ extract_file_path_jq() {
 }
 extract_file_path_fallback() {
   printf '%s' "$1" | grep -o '"file_path"[[:space:]]*:[[:space:]]*"[^"]*"' 2>/dev/null \
-    | sed -E 's/.*:[[:space:]]*"(.*)"/\1/'
+    | sed -E 's/.*:[[:space:]]*"(.*)"/\1/' \
+    | sed -e 's/\\\\/\\/g' -e 's/\\"/"/g' -e 's/\\\//\//g'
+}
+normalize_path() {
+  local p="$1"
+  if printf '%s' "$p" | grep -qE '^[A-Za-z]:[\\/]|^\\\\'; then
+    printf '%s' "$p" | sed 's/\\/\//g'
+  else
+    printf '%s' "$p"
+  fi
 }
 
 file_path=""
@@ -23,6 +38,7 @@ else
 fi
 
 [ -n "$file_path" ] || exit 0
+file_path="$(normalize_path "$file_path")"
 [ -f "$file_path" ] || exit 0
 
 case "$file_path" in
@@ -122,6 +138,10 @@ result="$(awk -v s1="Key Entry Points" -v s2="Patterns & Conventions" -v s3="Got
     printf "%d %d %d %d %d %d %d %d %d\n", body_nonblank, marker, heading_found, tldr_ok, sec1, sec2, sec3, sec4, sec5
   }
 ' "$file_path" 2>/dev/null)"
+
+# empty result means the awk pass produced no output (e.g. the file exists but
+# isn't readable) — bail out silently rather than feed empty vars to [ -eq ]
+[ -n "$result" ] || exit 0
 
 read -r body marker heading tldr sec1 sec2 sec3 sec4 sec5 <<<"$result"
 

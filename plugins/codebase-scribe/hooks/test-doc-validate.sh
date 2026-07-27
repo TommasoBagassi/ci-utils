@@ -119,4 +119,44 @@ out="$(printf '{"tool_input":{}}' | bash "$HOOK" 2>"$TMP/nfp.err")"; rc=$?
 # 10. file_path pointing at a file that does not exist -> silent on both streams
 expect_silent nonexistent-file "$D/does-not-exist.md"
 
+# --- fix-verification cases (review round 1) ---
+
+# Windows-native, JSON-escaped file_path (real \\ pairs in the wire payload, not a
+# forward-slash path in disguise) must still resolve and warn. Requires a genuine
+# Windows-style absolute path string, built via cygpath from the same on-disk file
+# the POSIX-path cases already use, so the fixture actually exists at that path.
+printf -- '---\nx: 1\n---\nno heading\n' > "$D/win-style.md"
+if command -v cygpath >/dev/null 2>&1; then
+  win_path="$(cygpath -w "$D/win-style.md" 2>/dev/null)"
+  win_escaped="$(printf '%s' "$win_path" | sed 's/\\/\\\\/g')"
+  out="$(printf '{"tool_input":{"file_path":"%s"}}' "$win_escaped" | bash "$HOOK" 2>"$TMP/win.err")"; rc=$?
+  if [ $rc -eq 0 ] && [ ! -s "$TMP/win.err" ] && printf '%s' "$out" | grep -q '"systemMessage".*WARNING'; then
+    PASS=$((PASS+1))
+  else
+    FAIL=$((FAIL+1)); echo "FAIL: windows-native-json-escaped-path rc=$rc -> $out"
+  fi
+else
+  echo "SKIP: windows-native-json-escaped-path (cygpath unavailable on this machine)"
+fi
+
+# requirement 7 (discriminating): the removed "Fix before proceeding" clause must
+# not reappear in the advisory text.
+out="$(invoke "$D/no-heading.md" 2>"$TMP/req7a.err")"; rc=$?
+if [ $rc -eq 0 ] && [ ! -s "$TMP/req7a.err" ] && ! printf '%s' "$out" | grep -q 'Fix before proceeding'; then
+  PASS=$((PASS+1))
+else
+  FAIL=$((FAIL+1)); echo "FAIL: no-fix-before-proceeding-clause rc=$rc -> $out"
+fi
+
+# requirement 7 (discriminating): a mature-tier warning lists only the TL;DR
+# element, never the 5 skeleton sections.
+out="$(invoke "$D/no-heading.md" 2>"$TMP/req7b.err")"; rc=$?
+if [ $rc -eq 0 ] && [ ! -s "$TMP/req7b.err" ] \
+   && printf '%s' "$out" | grep -q 'TL;DR blockquote' \
+   && ! printf '%s' "$out" | grep -q 'Key Entry Points'; then
+  PASS=$((PASS+1))
+else
+  FAIL=$((FAIL+1)); echo "FAIL: mature-warning-lists-only-tldr rc=$rc -> $out"
+fi
+
 echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
