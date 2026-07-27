@@ -10,7 +10,7 @@ You are running Phase 2 (Draft & Enrich) of the codebase-scribe documentation sy
 ## Safety Rules
 
 1. Never modify AGENTS.md (except append-only for new topic links -- handled by the command, not this skill)
-2. Never delete existing verified content in topic files -- only add to or update inferred sections
+2. Never delete existing verified content in topic files -- only add to or update inferred sections. Sections listed in `human_sections` may be extended, but their existing prose must be preserved verbatim.
 3. Always mark auto-generated sections in frontmatter `inferred_sections`
 4. Respect file budgets: 30 files per topic (configurable via `.scribe.yml`)
 5. When the session file count approaches 150, warn the user -- do not stop automatically
@@ -93,7 +93,7 @@ Skip these files -- never read them, they don't count against your budget:
 
 3. **Propose splits for long topics.** If a topic exceeds 500 lines, tell the user: "This topic is [N] lines. I recommend splitting into [topic-overview.md] and [topic-detail.md]. Proceed?" Do not silently generate files over 500 lines.
 
-4. **ALWAYS update inferred_sections when incorporating user answers.** When a user answers a design decision question and you incorporate their answer into a section, you MUST remove that section's top-level slug (e.g., `dependencies--context` or `gotchas`) from the `inferred_sections` list in frontmatter. Do NOT remove subsection slugs — only the top-level parent. This drives the `human_input` score. Skipping this step means the score never changes and the feature is broken.
+4. **ALWAYS update `human_sections` and `inferred_sections` when incorporating user answers.** When a user answers a design decision question and you incorporate their answer into a section, you MUST add that section's top-level slug (e.g., `dependencies--context` or `gotchas`) to the `human_sections` list in frontmatter — the scoring list — AND remove it from the `inferred_sections` list, for that list's other consumers. Do NOT add or remove subsection slugs — only the top-level parent. `human_sections` is a set: adding an already-present slug is a no-op — repeat credits are the common case and must not inflate the score. Skipping this step means the section's human attribution is never recorded.
 
 ## Decision Drift Resolution
 
@@ -254,7 +254,7 @@ Options:
 
 The user can select an option or choose "Other" to provide a free-text explanation.
 
-**If the user provides an explanation:** incorporate the answer into the Dependencies & Context or Gotchas section of the topic content. Per HARD RULE #4, remove the top-level section slug from `inferred_sections` (but keep subsection slugs). When extracting claims in Step 11, create a claim with provenance:
+**If the user provides an explanation:** incorporate the answer, appending to `Dependencies & Context` or `Gotchas`; if neither exists, the last `##` section; if no `##` section exists, create `## Dependencies & Context` and append there. Per HARD RULE #4, update `human_sections` and `inferred_sections` for the section that received the answer. When extracting claims in Step 11, create a claim with provenance:
 
 ```yaml
 provenance:
@@ -292,7 +292,7 @@ Each question uses AskUserQuestion with descriptive options. The user can select
 
 **Do NOT ask:** "What does [function] do?" — the code answers that. Ask "why", not "what."
 
-Incorporate answers into `Gotchas` and `Dependencies & Context` sections. Per HARD RULE #4, remove the top-level section slug from `inferred_sections` for each section that received user input (keep subsection slugs). When extracting claims in Step 11, create claims from user answers with provenance:
+Incorporate answers, appending to `Dependencies & Context` or `Gotchas`; if neither exists, the last `##` section; if no `##` section exists, create `## Dependencies & Context` and append there. Per HARD RULE #4, update `human_sections` and `inferred_sections` for each section that received user input. When extracting claims in Step 11, create claims from user answers with provenance:
 
 ```yaml
 provenance:
@@ -306,13 +306,13 @@ provenance:
 For each topic:
 These scores are non-negotiable for draft output:
 - **Freshness:** always `100` — the content was just generated from current code. Not a judgment call.
-- **Human Input:** calculate as (sections NOT in `inferred_sections` / total sections) x 100. If no user answered any design decision questions during this draft, the score is 0. If the user provided answers and sections were removed from `inferred_sections` per HARD RULE #4, the score reflects that immediately.
+- **Human Input:** calculate as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100 — heading↔slug test per the orchestrator's Step 3 prune / draft §4's slug algorithm. The formula is universal: an empty `human_sections` list yields 0 with no special-cased zero-rule. If the user provided answers and a slug was added to `human_sections` per HARD RULE #4, the score reflects that immediately.
 - **Completeness:** calculate this one. Count depth-1 subdirectories of each watch_path. Completeness = (subdirectories with at least one file referenced in the doc / total subdirectories) x 100.
 
 ### 10. Write Topic File
 
 Write the complete topic file with:
-- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags)
+- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim: `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)
 - Markdown content following the structure above
 
 ### 11. Extract Claims
@@ -368,11 +368,11 @@ Append claims to `docs/agents/.claims.yml`. Include `_meta` with the topic's cur
 
 After writing each topic and extracting claims, run this checklist:
 - [ ] Structure check (two-tier): stub topics have exactly these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`, plus TL;DR; mature topics have TL;DR, and free-form domain headings are legitimate
-- [ ] Frontmatter has `freshness: 100` and `human_input` is calculated (0 if no user input, higher if sections were removed from `inferred_sections`)
+- [ ] Frontmatter has `freshness: 100` and `human_input` is calculated as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100
 - [ ] Completeness is a calculated percentage, not an estimate
 - [ ] Claims were written to `.claims.yml` for this topic
 - [ ] The TL;DR blockquote exists as the first line after the `#` heading
-- [ ] If user answered a design decision question, the answer is incorporated and the top-level section slug is removed from `inferred_sections` (HARD RULE #4)
+- [ ] If user answered a design decision question, the answer is incorporated and the top-level section slug is added to `human_sections` and removed from `inferred_sections` (HARD RULE #4)
 
 If any check fails, fix it before moving to the next topic.
 
@@ -384,7 +384,7 @@ Update `.scribe/session.json` with this topic's status as `complete` and the cou
 
 ### Wrap-Up Pass
 
-Present all queued non-critical questions to the user. These are questions where the answer only affects the single topic they belong to. Document answers into the relevant topic files. Remove answered sections from `inferred_sections`.
+Present all queued non-critical questions to the user. These are questions where the answer only affects the single topic they belong to. Document answers into the relevant topic files, using the same incorporation target rule as §6/§7. This pass runs *after* §8/§10 have already written the files, so for each answered section: add its top-level slug to `human_sections`, remove it from `inferred_sections`, recompute `human_input`, and rewrite the touched topic's frontmatter — without the recompute, the credit would not land until the next run.
 
 ### Regenerate STATUS.md
 

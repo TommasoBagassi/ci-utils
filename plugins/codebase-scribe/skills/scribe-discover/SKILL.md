@@ -9,6 +9,7 @@ description: Mechanical stub creator. Receives an approved topic list from the o
 2. **Do NOT touch AGENTS.md.** Only create files inside `docs/agents/`.
 3. **Do NOT scan the codebase.** The orchestrator already did that and told you what topics to create.
 4. **Do NOT propose topics.** The user already approved the list. Just create the stubs.
+5. **Never overwrite an existing topic file.** If `docs/agents/<name>.md` already exists for a topic in the batch, refuse to write it. Create the remaining topics and return the colliding names to the orchestrator — do not touch the existing file.
 
 ## Your identity
 

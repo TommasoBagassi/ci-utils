@@ -116,13 +116,17 @@ Options — one per proposed topic, with description showing the source (code st
 
 After the user approves, invoke the `scribe-discover` skill with the approved topic list. Tell it exactly which topics to create, with their watch_paths and migration info.
 
+Discover refuses to overwrite a topic file that already exists: it creates the remaining topics and returns the colliding names. Drop colliding names from the working batch, do not re-attempt creation, and record them for the Step 13 summary with a rename suggestion.
+
 After discover completes, tell the user: "Stubs created. Run `/codebase-scribe` again to fill them with content from code analysis."
 
 ### Step 3: Read topic state and prune orphans
 
-1. **Read all topic files** — for each `.md` in `docs/agents/` (excluding STATUS.md), extract `scribe:` frontmatter fields: `scan`, `freshness`, `human_input`, `completeness`, `inferred_sections` (list of `{id, heading}`), `watch_paths`, `stale_flags`.
+1. **Read all topic files** — for each `.md` in `docs/agents/` (excluding STATUS.md), extract `scribe:` frontmatter fields: `scan`, `freshness`, `human_input`, `completeness`, `inferred_sections` (list of `{id, heading}`), `human_sections` (list of top-level slugs), `decisions`, `question_passes` (absent treated as `0`), `watch_paths`, `stale_flags`.
 
-2. **Prune orphaned inferred_sections** — for each topic, check `inferred_sections` entries against actual `##` headings. Remove entries with no matching heading.
+2. **Prune orphaned inferred_sections and human_sections** — heading existence is tested by applying draft §4's slug algorithm to each fence-aware `##` heading (headings inside fenced code blocks don't count) and comparing; that same fence-aware `##` heading set is also `human_input`'s denominator (draft §8, maintain §8).
+   - `inferred_sections`: compare each entry against actual headings at its own level — entries stored with a `##` heading against actual `##` headings, entries stored with a `###` heading against actual `###` headings (pre-existing bug fixed here: `###` entries were previously compared against `##` headings and so were always pruned on the first pass). Remove entries with no matching heading.
+   - `human_sections`: each entry is a top-level slug; remove it the same way `inferred_sections` orphans are pruned — if its `##` heading no longer exists.
 
 3. **Repair `watch_paths` (directories forever)** — per entry: normalize trailing slashes; then iteratively — until the entry resolves to an existing directory or is reduced to a single segment — replace it by its parent; dedupe. Single-segment entries are preserved as-is; preserved single-segment entries that resolve to neither an existing directory nor an existing file are reported in the Step 13 summary (permanently drift-blind scopes must not be silent). Purely mechanical — origin is not distinguishable and not consulted. **Accepted consequence, recorded:** a legitimately file-scoped multi-segment entry (`cmd/server/main.go`) is widened to its directory permanently — precise file scopes below the top level do not survive the directories-forever rule.
 
@@ -194,7 +198,7 @@ Record the confirmed focus areas. Each focus area gets:
 - A list of confirmed paths to analyze
 - Whether it enriches an existing topic or creates a new one
 
-If any confirmed area needs a new topic, invoke `scribe-discover` to create the stub first.
+If any confirmed area needs a new topic, invoke `scribe-discover` to create the stub first. If discover returns colliding names (a topic file that already exists), drop them from this focus-mode batch, do not re-attempt creation, and record them for the Step 13 summary with a rename suggestion.
 
 Then proceed to Step 8 with the focus-filtered topic list (only work on confirmed focus topics).
 
