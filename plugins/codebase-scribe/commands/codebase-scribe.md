@@ -46,6 +46,8 @@ Detached HEAD: `main-only` refuses; `branch-local` proceeds with `current_branch
 
 ### Step 1: Check for first run
 
+Before applying the route below, run both sub-blocks that follow the table — gitignore seeding, then the claims migration, in that order — in every mode.
+
 | docs_dir exists | agents_md exists | Route |
 |-----------------|------------------|-------|
 | No | No | **Seed mode** → go to Step 2 (Topic Discovery) |
@@ -61,7 +63,7 @@ Idempotently ensure `.gitignore` contains `.scribe/` and `<docs_dir>/.claims.yml
 
 Runs after gitignore seeding, still in Phase 0 Step 1; per-decision idempotent.
 
-**Trigger, split in two:** the frontmatter *reconstruction* triggers whenever `<docs_dir>/.claims.yml` exists and holds `origin: user` claims — tracked or not, so an untracked-but-present cache still migrates its provenance. Only the *untrack* step is additionally gated on trackedness (`git ls-files --error-unmatch <docs_dir>/.claims.yml` succeeding) AND an AskUserQuestion approval.
+**Trigger, split in two:** the frontmatter *reconstruction* triggers whenever `<docs_dir>/.claims.yml` exists and holds `origin: user` claims — tracked or not, so an untracked-but-present cache still migrates its provenance. Only the *untrack* step is additionally gated on trackedness (`git ls-files --error-unmatch <docs_dir>/.claims.yml` succeeding) and, only then, an AskUserQuestion approval.
 
 **Selection and mapping:** select claims with `provenance.origin: user` only. For each, write a `decisions:` entry on its topic: `id`←claim.id, `type`←claim.type, `claim`←claim.claim, `context`←provenance.context, `recorded`←provenance.recorded, `source`←claim.source, `status: active`. (Full schema: `id`, `type`, `claim`, `context`, `recorded`, `source`, `status: active|retired`, plus optional `resolved_at` — that field is written by Decision Drift Resolution, not by this migration.)
 
@@ -516,7 +518,7 @@ Options:
 Print: mode, branch, topics worked, budget used, scores table, contradictions count. If all topics are `complete`, also print: "All topics are complete." Then print: standard files status (created / updated / skipped for README.md, CONTRIBUTING.md, ARCHITECTURE.md, CLAUDE.md, GEMINI.md, docs/upstream.md), suggested next action.
 
 Also print, when they occurred this run:
-- Any `.gitignore` modification (seeding or the migration's untrack) and the staged claims-file untrack, each with an instruction to commit.
+- Any `.gitignore` modification from seeding, and the staged claims-file untrack, each with an instruction to commit.
 - Preserved single-segment `watch_paths` entries that resolve to neither an existing directory nor an existing file (Step 3's watch-path repair).
 - Colliding topic names from discover, with a rename suggestion.
 
