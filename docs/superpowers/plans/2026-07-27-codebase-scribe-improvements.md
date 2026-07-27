@@ -2,6 +2,15 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
+> **Gate record — ACCEPTED with residuals by user decision (2026-07-27), rev 3.1.**
+> Plan gate: 4 fresh Opus reviewers (review pair A/B: 44 findings, all closed and
+> finder-verified across three rounds; voting pair C/D: 34 findings + 13 follow-on
+> items, all closed; the final 12 follow-on fixes apply the finders' own suggested
+> text and were accepted without a further verification round per the user's
+> explicit direction). Residual policy: discrepancies discovered during execution
+> are resolved against the SPEC (normative per Global Constraints); verification
+> steps may carry minor imprecision — correct them in place, don't block on them.
+
 **Goal:** Implement the accepted spec `docs/superpowers/specs/2026-07-27-codebase-scribe-improvements-design.md` (rev 6.1) — drift-integrity fixes, the two-tier structure contract, the review-agent conversion, provenance durability, the #39 strip, and eval regeneration for the codebase-scribe plugin.
 
 **Architecture:** The plugin is a set of prose instruction files (`commands/codebase-scribe.md`, four `skills/*/SKILL.md`, one agent file to be created) plus a bash PostToolUse hook and per-skill eval suites. Implementation is seven waves, each an independently PR-able unit, in strict order (the spec's §9). Wave 1 is the kiali-blocking bundle and must be complete and internally consistent on its own.
@@ -14,7 +23,7 @@
 - Baseline: branch `scribe-improvements` on the fork, on top of `f8f0b9a`. All work commits to this branch; one PR per wave, in wave order.
 - Never edit any `eval.yaml`, `eval.md`, or `eval/` content except in Task 26 (wave 6). Eval fixtures are excluded from all acceptance greps (spec §6, §8).
 - `plugins/codebase-scribe/IMPROVEMENT-REPORT.md` is an uncommitted working doc: never commit it, never delete it before Task 28. **Before wave 1, run** `echo "/plugins/codebase-scribe/IMPROVEMENT-REPORT.md" >> .git/info/exclude` so no add can sweep it.
-- **Never use `git commit -am` and never `git add` a directory**: `-am` sweeps unrelated tracked edits (including this plan file’s checkbox ticks) and a directory add stages untracked files. Stage each task’s Files list explicitly; the commit commands below use `git add -u plugins/codebase-scribe` (tracked-only, path-scoped) where a task only modifies tracked plugin files.
+- **Never use `git commit -am`; never `git add` a directory that may contain untracked files the task did not create**: `-am` sweeps unrelated tracked edits (including this plan file’s checkbox ticks) and a broad directory add stages strays. Modification-only tasks use `git add -u plugins/codebase-scribe` (tracked-only, path-scoped). Tasks that CREATE files (1, 14, 26, 28) add narrowly-scoped directories that contain only their own new+modified files — those five commands are the deliberate exceptions and have been checked to stage nothing untracked-foreign.
 - The kiali completion run is external and waits for wave 3+; nothing in this plan *executes the plugin* against kiali. Two tasks read kiali artifacts read-only over the network: Task 8 Step 4b (trackedness) and Task 10 Step 4 (footer strings).
 - Line references into plugin sources below were verified at baseline; re-locate by quoted text if drift occurred.
 - Commit messages: prefix `scribe:`; every commit trailer per repo convention.
@@ -97,8 +106,9 @@ expect_silent status-md "$D/STATUS.md"
 # custom docs_dir via .scribe.yml, repo-relative path
 mkdir -p "$TMP/repo/docs/ai"; printf 'output:\n  docs_dir: "docs/ai"\n' > "$TMP/repo/.scribe.yml"
 printf -- '---\nx: 1\n---\nno heading\n' > "$TMP/repo/docs/ai/t.md"
-( cd "$TMP/repo" && printf '{"tool_input":{"file_path":"docs/ai/t.md"}}' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" | grep -q WARNING ) \
-  && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: custom-docs-dir-relative"; }
+out="$(cd "$TMP/repo" && printf '{"tool_input":{"file_path":"docs/ai/t.md"}}' | env -u CLAUDE_PROJECT_DIR bash "$HOOK" 2>"$TMP/rel.err")"; rc=$?
+[ $rc -eq 0 ] && [ ! -s "$TMP/rel.err" ] && printf '%s' "$out" | grep -q WARNING \
+  && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: custom-docs-dir-relative rc=$rc"; }
 rm "$TMP/repo/.scribe.yml"
 # stub with all 5 sections but NO TL;DR -> warn (stub TL;DR enforcement is new)
 printf -- '---\nx: 1\n---\n# T\n\n## Key Entry Points\n*Stub — will be populated by the draft skill.*\n\n## Patterns & Conventions\n*Stub — will be populated by the draft skill.*\n\n## Gotchas\n*Stub — will be populated by the draft skill.*\n\n## Dependencies & Context\n*Stub — will be populated by the draft skill.*\n\n## Links\n*Stub — will be populated by the draft skill.*\n' > "$D/stub-no-tldr.md"
@@ -111,12 +121,10 @@ rm "$TMP/repo/.scribe.yml"
 printf 'output:\n  docs_dir: "%s/docs/ai"\n' "$TMP/repo" > "$TMP/repo/.scribe.yml"
 expect_warn leading-slash-docs-dir "$TMP/repo/docs/ai/t.md"
 rm "$TMP/repo/.scribe.yml"
-# warnings carry the systemMessage envelope
-out="$(invoke "$D/no-heading.md")"
-printf '%s' "$out" | grep -q '"systemMessage"' && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: envelope"; }
-# malformed JSON input -> silent on stdout AND stderr
-out="$(printf 'not json' | bash "$HOOK" 2>"$TMP/mj.err")"
-[ -z "$out" ] && [ ! -s "$TMP/mj.err" ] && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: malformed-json"; }
+# (envelope assertion now lives inside expect_warn — no separate case needed)
+# malformed JSON input -> silent on stdout AND stderr, exit 0
+out="$(printf 'not json' | bash "$HOOK" 2>"$TMP/mj.err")"; rc=$?
+[ $rc -eq 0 ] && [ -z "$out" ] && [ ! -s "$TMP/mj.err" ] && PASS=$((PASS+1)) || { FAIL=$((FAIL+1)); echo "FAIL: malformed-json rc=$rc"; }
 # non-docs file silent
 printf 'x' > "$TMP/repo/other.md"; expect_silent non-docs "$TMP/repo/other.md"
 
@@ -125,7 +133,7 @@ echo "PASS=$PASS FAIL=$FAIL"; [ "$FAIL" -eq 0 ]
 
 **Additional required cases** (append to the harness — one `printf` fixture + one `expect_*` each; the inline script above is the skeleton, this list is part of the contract):
 
-1. `expect_warn empty-body` — frontmatter + `# T` heading and nothing else (requirement 5 gains the spec's "body empty" disjunct: an empty body is stub-tier — five sections AND TL;DR missing).
+1. `expect_warn empty-body` — **frontmatter only** (`---`/`x: 1`/`---`, no heading, no body — a `# T` heading would be a non-blank line and land the fixture in the mature tier): requirement 5's "body empty" disjunct makes this stub-tier — five sections AND TL;DR missing.
 2. `expect_silent marker-midline` — mature topic whose prose mentions `*Stub — will be populated` mid-sentence, outside a fence (anchoring test).
 3. `expect_silent tilde-fence` — marker inside a `~~~` fence (requirement 4 names both fence styles).
 4. `expect_warn frontmatter-comment` — a `# comment` line inside the YAML frontmatter, then no real `# ` heading after `---` (the comment must not satisfy the heading anchor).
@@ -146,7 +154,7 @@ Expected: FAIL count > 0 (current hook enforces 5 sections on everything, matche
 Requirements (spec §1 "Hook fixes" + "Contract" + "Fence-awareness algorithm" — normative there):
 1. Resolve `.scribe.yml` from `$CLAUDE_PROJECT_DIR` when that variable is set AND a `.scribe.yml` exists there; otherwise fall back to the current working directory. Extract docs_dir: an indented `docs_dir:` line inside the `output:` block only; strip quotes/trailing comments; default `docs/agents` on any failure. Leading-`/` value = exact path prefix.
 2. Path match accepts absolute AND repo-relative `file_path`: for a non-`/`-leading docs_dir match against `*"$docs_dir"/*.md` and `"$docs_dir"/*.md`; for a leading-`/` docs_dir use it as an exact path prefix (`"$docs_dir"/*.md` only). Keep the `*/STATUS.md` exclusion.
-3. jq precedence: use jq if present; else grep/sed extraction of `file_path`; if extraction yields nothing, exit 0 silently. Nothing on stderr on any path (`2>/dev/null` on probes). **Testability affordance:** the hook honors `SCRIBE_NO_JQ=1` (env) by skipping the jq probe and using the grep/sed path — this exists so the fallback branch is testable deterministically on any machine.
+3. jq precedence: use jq if present; else grep/sed extraction of `file_path`; if extraction yields nothing, exit 0 silently. Nothing on stderr on any path (`2>/dev/null` on probes). **Testability affordance (deliberate plan-level addition beyond spec §1’s enumeration, recorded here):** the hook honors `SCRIBE_NO_JQ=1` (env) by skipping the jq probe and using the grep/sed path — so the fallback branch is testable deterministically on any machine. Document it in the hook’s header comment as test-only; Task 28’s P5 list carries it.
 4. Fence-aware scanning: one awk pass over the file toggling a flag on `` ^``` `` or `^~~~`; heading detection, TL;DR anchor, and stub-marker detection all count only lines with the flag off.
 5. Stub test: body empty (no non-blank line after frontmatter) OR any unfenced line beginning with `*Stub — will be populated` → stub tier → require the five `##` headings (`Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`) AND the TL;DR. Otherwise mature tier → require only the TL;DR.
 6. TL;DR check: after the closing `---` of frontmatter, the first non-blank line after the first unfenced `# ` line must start with `>`; a file with no unfenced `# ` heading warns.
@@ -160,8 +168,10 @@ Expected: `FAIL=0`, exit code 0. Then exercise BOTH extraction branches determin
 ```bash
 # fallback branch, forced via the hook's test override (works on any platform — no PATH shims,
 # which are fragile under Git-Bash/MSYS where ln -s copies and DLL resolution breaks):
+TMP_ERR="$(mktemp)"
 SCRIBE_NO_JQ=1 bash plugins/codebase-scribe/hooks/test-doc-validate.sh 2>"$TMP_ERR"; rc=$?
 test $rc -eq 0 && test ! -s "$TMP_ERR" && echo NOJQ-OK || echo "NOJQ-FAIL rc=$rc"
+rm -f "$TMP_ERR"
 ```
 
 For the **jq branch**: if `command -v jq` is non-empty on this machine, the plain Step-4 run already exercised it. If jq is absent (record `command -v jq`'s output in the task notes), either install a real jq (winget/scoop, or a static binary in a temp dir prepended to PATH) and re-run the plain suite, or record the jq branch as verified-by-inspection — the grep/sed branch is what production uses on jq-less machines anyway.
@@ -218,7 +228,7 @@ Expected: the two negated greps empty; the stub row present; discover's marker c
 - [ ] **Step 5: Commit**
 
 ```bash
-git add plugins/codebase-scribe/commands plugins/codebase-scribe/skills
+git add -u plugins/codebase-scribe
 git commit -m "scribe: two-tier structure contract across draft, maintain, Step 5 (spec §1)"
 ```
 
@@ -243,7 +253,7 @@ Per spec §2 "Error Handling updates": preamble gains "…except where an entry 
 
 - [ ] **Step 3: Thread branch state into the three brief blocks**
 
-Add to draft's Inputs, draft's Rework Brief Contents, and maintain's Inputs: `default_branch`, `branching_strategy`, `current_branch`, **and `shallow: true|false`** (the orchestrator's shallow-clone determination — the skills must not re-probe) — with the sentence "use the passed values; never re-detect" (spec §2 Threading).
+Add to draft's Inputs, draft's Rework Brief Contents, and maintain's Inputs: `default_branch`, `branching_strategy`, `current_branch`, **and `shallow: true|false`** (the orchestrator's shallow-clone determination — the skills must not re-probe; a deliberate plan-level addition beyond spec §2's field enumeration, recorded here: the spec's shallow-gate list names maintain-side behaviors and the brief is their only carrier into the skill) — with the sentence "use the passed values; never re-detect" (spec §2 Threading).
 
 - [ ] **Step 4: Verify**
 
@@ -265,7 +275,7 @@ git commit -m "scribe: fail-closed default-branch ladder + branch-state threadin
 ### Task 4: Scan-SHA validation, shallow gate, Step 5 row table, session guard
 
 **Files:**
-- Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 3 (~line 109), Step 4 (~line 119), Step 5 table (~lines 123–135), Error Handling list (~lines 13–19; Step 3b)
+- Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 3 (~line 109), Step 4 (~line 119), Step 5 table (~lines 123–135), Error Handling list (~lines 13–19; Step 3b), 9f item 6 (~line 373; the frontmatter-sourcing clause)
 - Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — §1 (~line 40), §2 table intro, §3 (~line 61), §4 (~line 80), §5 (~line 104), §8 (~line 157), §9 parenthetical (~line 171)
 
 **Interfaces:**
@@ -400,7 +410,7 @@ git commit -m "scribe: human_sections positive attribution wired into every site
 
 **Interfaces:**
 - Consumes: Task 3's brief branch state.
-- Produces: the stamping predicate "drafted or reworked in this run" used by 9f, and the rule that maintain never advances `scan`. Task 21's question-pass exclusion extends these same sites. **Wave-1 end state of draft §10's frontmatter line (three tasks touch it; this is the composed result):** "YAML frontmatter (scan SHA = current HEAD — only on the default branch under `main-only`, and never for a question pass —, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim: `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)".
+- Produces: the stamping predicate "drafted or reworked in this run" used by 9f, and the rule that maintain never advances `scan`. Task 21's question-pass exclusion extends these same sites. **Wave-1 end state of draft §10's frontmatter line (three tasks touch it; this is the composed result):** "YAML frontmatter (scan SHA = current HEAD — only on the default branch under `main-only`, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim: `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)". Task 21 (wave 4) later inserts the question-pass exclusion into this line — wave 1 must not pre-empt a flag that does not exist yet. Note on the Step-3 count check: §10 is guarded via this composed wording rather than the literal "do not update" clause, so the `-ge 3` threshold (§8, Rework step 6, Review Gate item 6) is exact, not a margin.
 
 - [ ] **Step 1: Apply the branch-gate refusals (main-only scoped)**
 
@@ -521,7 +531,7 @@ Open a PR to fork main titled "scribe wave 1: drift integrity, structure contrac
 
 **Files:**
 - Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — preamble (~line 9), Step 3, Step 10, 9f item 6; Phase 0 resolution + brief threading sentence
-- Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — claims path (~line 367), STATUS.md (~line 393), README template placeholder (~line 474) and README links rule (~line 485), ARCHITECTURE template links + prose (~lines 523, 532–544), CLAUDE/GEMINI bodies (~lines 557, 573), Inputs + Rework Brief Contents (gain `docs_dir`)
+- Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — claims path (~line 367), STATUS.md (~line 393), README template placeholder (~line 474) and README links rule (~line 485), ARCHITECTURE template links + prose (~lines 523, 532–544), CLAUDE/GEMINI bodies (~lines 557, 573), Inputs + Rework Brief Contents (gain `docs_dir`). When rewriting command 9f item 6 for docs_dir, preserve Task 4’s "(scores sourced from frontmatter)" clause
 - Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — Inputs (gains `docs_dir`)
 - Modify: `plugins/codebase-scribe/skills/scribe-discover/SKILL.md` — its "receive from the orchestrator" list gains `docs_dir`; command Step 2d’s invocation sentence names it
 - Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — claims (~line 116), STATUS.md (~line 185), standard-files checks (~lines 206–214)
@@ -759,6 +769,6 @@ git commit -m "scribe: strip Red Hat upstream.md contextification (revertible; a
 
 - [ ] **Step 1:** Write `check-sync.sh`: four-way version comparison (both plugin.json versions and both marketplace codebase-scribe entries identical) + — if Task 19 took the derived-copy fallback — a diff check that the skill copy matches its generation source. Exit non-zero on mismatch.
 - [ ] **Step 2:** Run it (expect failure states verified by temporarily perturbing one file, then restore). Bump all four versions to 1.3.0. Run again: exit 0.
-- [ ] **Step 3:** P5 README full re-read: align every behavioral claim (fresh-session review, `.claims.yml` "regenerable", gitignore automation, Standard Files list minus upstream, scan example note, `questions`/`default_branch` config, Human Input caveat, the recorded non-git-directory refusal under `main-only` (spec §2), the hook’s blindness to the `branch-local` docs-dir override (spec §1’s documented gap — not Cursor-specific, so it lands here, not in the Cursor section), version, Cursor section).
+- [ ] **Step 3:** P5 README full re-read: align every behavioral claim (fresh-session review, `.claims.yml` "regenerable", gitignore automation, Standard Files list minus upstream, scan example note, `questions`/`default_branch` config, Human Input caveat, the recorded non-git-directory refusal under `main-only` (spec §2), the hook’s blindness to the `branch-local` docs-dir override (spec §1’s documented gap — not Cursor-specific, so it lands here, not in the Cursor section), the `SCRIBE_NO_JQ` test-only override (documented, test-only), version, Cursor section).
 - [ ] **Step 4:** Delete `IMPROVEMENT-REPORT.md`. Final sweep: `grep -riE 'autonom(ous|y)|upstream' plugins/codebase-scribe --include="*.md" -l | grep -v eval` → empty.
 - [ ] **Step 5: Commit; open the wave-7 PR** — `git add plugins/codebase-scribe .claude-plugin .cursor-plugin && git commit -m "scribe: v1.3.0 — sync check, README alignment, cleanup"` (`-a` cannot stage the new check-sync.sh).
