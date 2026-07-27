@@ -65,7 +65,7 @@ For each topic file, extract all file path references and function/type name ref
 - **Function names:** Does `grep -r "func <name>" <watch_paths>` find the function?
 
 For broken references:
-- If `shallow` is true, skip the rename check (`git log --diff-filter=R`) — renames are indistinguishable from deletions in a shallow clone. Report the broken reference without a deletion flag (do not assign `reason: "deleted"`); §9's escalation still counts these broken references toward its 60% threshold.
+- If `shallow` is true, skip the rename check (`git log --diff-filter=R`) — renames are indistinguishable from deletions in a shallow clone. Report the broken reference without a deletion flag (do not assign `reason: "deleted"`); §9's escalation is skipped for these references — renames cannot be distinguished from deletions at this clone depth, so the 60% threshold cannot be evaluated.
 - Otherwise, check `git log --diff-filter=R -- <old_path>` to find if the file was renamed
 - If renamed: auto-fix the reference in the doc, note the change in your summary
 - If deleted: add a stale flag to frontmatter:
@@ -166,13 +166,13 @@ Run these on every maintain pass:
 
 For each topic:
 
-**Freshness:** `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100. In a shallow clone, or when `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived recalculation for the topic; Human Input and Completeness (neither diff-derived) still run.
+**Freshness:** In a shallow clone, or when `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived recalculation for the topic — leave its `freshness` frontmatter value unchanged rather than recomputed. Otherwise: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100.
 
-**Human Input:** (sections NOT in `inferred_sections` / total sections) x 100.
+**Human Input:** (sections NOT in `inferred_sections` / total sections) x 100. Neither diff-derived — still runs regardless of the guard above.
 
-**Completeness:** List depth-1 subdirectories of each watch_path. Completeness = (directories with at least one file referenced in the doc / total directories) x 100.
+**Completeness:** List depth-1 subdirectories of each watch_path. Completeness = (directories with at least one file referenced in the doc / total directories) x 100. Neither diff-derived — still runs regardless of the guard above.
 
-Update scores in the topic file's frontmatter. Update `scan` SHA to current HEAD if changes were made.
+Update scores in the topic file's frontmatter (Freshness left at its prior value where skipped above). Update `scan` SHA to current HEAD if changes were made.
 
 ### 9. Escalation
 

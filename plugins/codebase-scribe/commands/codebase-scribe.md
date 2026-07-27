@@ -138,11 +138,11 @@ After discover completes, tell the user: "Stubs created. Run `/codebase-scribe` 
 
 ### Step 4: Check session state
 
-Read `.scribe/session.json`. Discard if: version != `1.0`, branch mismatch, >7 days old, HEAD >20 commits past `last_active_sha`, or `last_active_sha` fails the shape/resolution/reachability test from Step 3 (skipped in a shallow clone, per Step 3's gate). If valid, restore `total_files_read` and per-topic `phase_status`.
+Read `.scribe/session.json`. Discard if: version != `1.0`, branch mismatch, >7 days old, or either SHA-derived check on `last_active_sha` fails — HEAD >20 commits past it, or it fails the shape/resolution/reachability test from Step 3 (both skipped in a shallow clone, per Step 3's gate). If valid, restore `total_files_read` and per-topic `phase_status`.
 
 ### Step 5: Classify topics
 
-For each topic, run `git diff --stat <scan>..HEAD -- <watch_paths>` (skipped for null-scan topics — see the `drifted` row):
+For each topic, run `git diff --stat <scan>..HEAD -- <watch_paths>` (skipped for null-scan topics, topics whose `scan` failed Step 3's validation, and — per Step 3's gate — every topic in a shallow clone; see the `drifted` row):
 
 | Category | Criteria | Priority |
 |----------|----------|----------|
