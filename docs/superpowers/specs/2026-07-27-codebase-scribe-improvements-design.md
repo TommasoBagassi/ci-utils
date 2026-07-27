@@ -1,8 +1,13 @@
 # codebase-scribe Improvements — Design Spec
 
-- **Date:** 2026-07-27 (rev 6 — reworked after voting round 4: fresh voters I and J,
-  both NOT_APPROVED; full union applied)
-- **Status:** Pending gate decision after voting round 4
+- **Date:** 2026-07-27 (rev 6.1)
+- **Status:** **ACCEPTED — gate closed by user decision (2026-07-27) at rev 6.1.**
+  Gate record: 10 fresh Opus reviewers (1 review round + 4 voting rounds), zero
+  first-pass approvals, every finding closed and finder-verified; design stable
+  since rev 5 (rounds 4's findings were wiring-completeness of new text). Residual
+  risk accepted: a fresh reviewer pass would likely still find last-mile text
+  precision items; the plan gate and implementation reviews are the downstream
+  catch. See the revision log and git history for the full gate trail.
 - **Baseline:** fork `TommasoBagassi/ci-utils` @ `b3204c4` (identical to origin main as of this date)
 - **Branch:** `scribe-improvements`
 - **Background:** full findings analysis in `plugins/codebase-scribe/IMPROVEMENT-REPORT.md`
