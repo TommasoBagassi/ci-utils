@@ -296,7 +296,7 @@ review:
 
 # Branching
 branching_strategy: main-only  # main-only | branch-local | branch-commit
-default_branch: null           # default: auto-detect (fail-closed ladder: origin/HEAD -> origin/main/master -> local main/master -> current branch); set explicitly to skip detection
+default_branch: auto-detect    # main-only gates compare against this; the ladder auto-detects when unset
 
 # Topic customization
 topics:
