@@ -88,14 +88,28 @@ Committed frontmatter keys added by this spec: `decisions`, `question_passes`,
    answer is incorporated into a section) and pruned only when the section's heading
    no longer exists in the file (mirroring Step 3's orphan pruning, which is extended
    to prune `human_sections` orphans the same way it prunes `inferred_sections`).
+   **`human_sections` is a set — adding an already-present slug is a no-op** (the
+   incorporation targets are a small fixed set, so repeat credits are the common
+   case and must not inflate the score past its meaning).
    **`human_input` is computed from it:** (slugs in `human_sections` whose headings
    exist / total `##` sections) × 100; 0 when the topic has zero sections.
-   Consequences, replacing rev 4.1's absence-inference machinery entirely:
+   Consequences, replacing rev 4.1's absence-inference machinery entirely — **all
+   three computation sites and the trigger rule are rewritten, in wave 1**:
    - Draft §8's "if no user answered any design decision questions during this
      draft, the score is 0" is **scoped to topics with an empty `human_sections`**
      (true for every stub first-draft — the §1 acceptance keeps "first draft of a
      stub yields `human_input: 0`"); for topics with entries, §8 computes from the
      list. §12's checklist item is rescoped identically.
+   - **Maintain §8's Human Input line is rewritten to the `human_sections` formula**
+     (no zero-rule — maintain never solicits answers). Maintain is the steady-state
+     recomputation site; left on the old absence formula it would re-manufacture
+     credit from Step 3's pruning on every all-current run.
+   - **Draft HARD RULE 4 is rewritten** — it is the designated trigger, and its
+     current text ("This drives the `human_input` score. Skipping this step means
+     the score never changes…") asserts the old basis. New duty: add the section's
+     slug to `human_sections` (the scoring list) AND remove it from
+     `inferred_sections` (for that list's other consumers); the stale rationale
+     sentences are replaced.
    - Redrafts cannot zero the score (the list carries through per rule 1) and
      cannot inflate it (attribution is never inferred from `inferred_sections`
      absence — Step 3's pruning of renamed headings no longer manufactures credit).
@@ -103,7 +117,10 @@ Committed frontmatter keys added by this spec: `decisions`, `question_passes`,
      heading exists; the answer *text* is protected by draft Safety Rule 2. A
      heavily rewritten section retains credit as long as the heading and the
      incorporated answer survive — accepted, and honest, since the answer is still
-     present.
+     present. **Accepted residual:** a *manual* heading rename (`## Gotchas` →
+     `## Pitfalls`) prunes the credit even though the answer survives — draft-side
+     redrafts are safe (the §1 positive instruction preserves the heading set), but
+     Goal 2's "survives redrafts" does not extend to hand renames.
    - `inferred_sections` keeps its existing role (tracking machine-generated
      sections for other purposes) but no longer drives `human_input`.
 3. **Discover never overwrites:** discover refuses to write a topic file that
@@ -240,16 +257,18 @@ constant 0% for the stubs it creates and never consumes degraded values.
 Escalation stays maintain §9 (`escalated` flag + `completeness: 0`; its parenthetical
 is rewritten to name `escalated`).
 
-**Other stored-SHA consumers (full clones):** maintain §1/§4/§5/§8 treat an
-unresolvable/unreachable SHA as full churn and skip diff branches; Step 4 discards a
+**Other stored-SHA consumers (full clones):** on an unresolvable/unreachable SHA,
+maintain §1 reports full churn **without running its diff** (feeding §2's drift
+table its input), and §4/§5/§8 skip their diff-derived branches; Step 4 discards a
 session whose `last_active_sha` fails the same test; `_meta.<topic>_extracted_at`
 needs no guard (equality-only; mismatch → re-extract, the safe direction).
 
 ### Freshness/scan self-certification closed (Goal 3, fourth mechanism)
 
 **9f stamps `freshness: 100` and advances `scan` only for topics whose content was
-drafted or reworked in this run.** After a maintain-only pass, 9f preserves the
-freshness maintain §8 computed and does NOT advance `scan`; maintain §8's own
+drafted or reworked in this run** — a §4 question pass is explicitly neither, so 9f
+neither stamps freshness nor advances scan for it. After a maintain-only pass, 9f
+preserves the freshness maintain §8 computed and does NOT advance `scan`; maintain §8's own
 "Update `scan` SHA to current HEAD if changes were made" is deleted — mechanical
 reference fixes are repairs, not content updates, and advancing `scan` for them
 would make real drift permanently invisible (400 commits of churn erased by one
@@ -312,18 +331,27 @@ classifies `unverified` — that is the question loop working, not a defect).
   (Scoped Re-Review + REWORK_NEEDED fail-safe; Common LLM Errors + changelog rule).
 - **Eval design — no relocation (replaces earlier revisions' `evals/` move):** the
   repo's convention docs (`README.md` eval requirements, `docs/contributing.md`
-  layout) mandate `skills/<name>/eval.yaml`, `/eval-analyze` reads a SKILL.md as its
-  input, and the in-repo `code-reviewer` plugin already ships **agent + skill
-  pair** (`agents/adversarial-reviewer.md` alongside `skills/adversarial-review/`
-  with a skill-addressed eval suite). Adopt that shape: `skills/scribe-review/`
-  is **kept as a thin eval entry point** — its SKILL.md is reduced to a pointer
-  ("This skill is superseded by the `scribe-review` agent, which holds the review
-  protocol; dispatch via the Agent tool per command Step 9c. This file exists as
-  the eval entry point.") — and the eval suite stays where it is.
+  layout) mandate `skills/<name>/eval.yaml`, and `/eval-analyze` reads a SKILL.md
+  as its input. The in-repo `code-reviewer` plugin ships an **agent + full skill
+  pair** (`agents/adversarial-reviewer.md` alongside a 106-line
+  `skills/adversarial-review/SKILL.md` that duplicates the protocol — precedent for
+  keeping the skill *path*, NOT for a thin pointer; the duplication is exactly what
+  Goal 5 eliminates). Design: `skills/scribe-review/` is kept, its SKILL.md reduced
+  to a **dispatching stub** with one operative instruction — "This skill is
+  superseded by the `scribe-review` agent, which holds the review protocol.
+  When invoked (including by the eval runner), construct the Step 9c brief from
+  the provided inputs, dispatch the `scribe-review` agent via the Agent tool, and
+  return its report verbatim." — so an eval run produces the full report the
+  judges score, evaluating the agent indirectly through the dispatch.
   `skills/prompts/review-adversarial.md` is still deleted (merged into the agent).
-  Consequences: no relocation, no discovery question, no convention-doc edits, no
-  `/eval-analyze` input loss; wave 6 regenerates the suite in place against the
-  thin-skill + agent pair.
+  Consequences: no relocation, no convention-doc edits, `/eval-analyze` keeps a
+  SKILL.md input (the stub, whose eval semantics are "dispatch and relay").
+  **Fallback** (pre-check question 3): if the eval runner's environment cannot
+  dispatch the agent through the stub and surface its report in the captured
+  conversation, the skill instead carries a protocol copy **mechanically derived
+  from `agents/scribe-review.md`** (regenerated whenever the agent changes —
+  generated duplication with a single canonical source, mirroring code-reviewer's
+  shape without its hand-maintained divergence).
 - **Brief contract:** brief passed as the Agent tool's **prompt** (no `args`
   parameter exists; 9c/9d item 3 phrasing rewritten); 9c's `source_files` becomes
   paths-only (500-line excerpt clause dropped); the merged agent's Inputs section
@@ -361,9 +389,12 @@ classifies `unverified` — that is the question loop working, not a defect).
 
 ### Cursor pre-check (gate for the prompts-file deletion and dispatch cutover)
 
-Verify in both Claude Code and Cursor: (1) plugin-defined agents are dispatchable;
-(2) the exact `subagent_type` identifier. If either fails in Cursor, stop and
-surface the decision. (The eval-discovery question is moot — nothing moves.)
+Verify: (1) in both Claude Code and Cursor, plugin-defined agents are dispatchable;
+(2) the exact `subagent_type` identifier; (3) **under the eval runner, invoking the
+dispatching-stub skill surfaces the agent's report in the captured conversation**
+(the judges score `{{ conversation }}` expecting a full review report). If (1) or
+(2) fails in Cursor, stop and surface the decision; if (3) fails, apply the
+derived-copy fallback above.
 
 ### Snapshots to disk (M4)
 
@@ -427,8 +458,10 @@ status: active|retired).
   `id`←claim.id, `type`←claim.type, `claim`←claim.claim,
   `context`←provenance.context, `recorded`←provenance.recorded,
   `source`←claim.source, `status: active`; and the target section's slug is added
-  to `human_sections` when it can be identified from the claim's topic content
-  (else the decision is recorded without a section credit). Then `git rm --cached`;
+  to `human_sections` **only when exactly one `##` section's body contains the
+  claim text** (no match or multiple matches → the decision is recorded without a
+  section credit — a deterministic rule, since this one-shot migration sets a
+  scored committed field on the only real deployment). Then `git rm --cached`;
   the staged untrack and any `.gitignore` modification are reported in the Step 13
   summary with an instruction to commit.
 
@@ -449,15 +482,23 @@ entry when the resolved docs_dir is already under an ignored path.
 - **NOT done:** reading source files; regenerating existing sections; §5/§7
   questions; the Standard Files block; **HARD RULE 1's batch-completion duty and
   HARD RULE 2's 15–20-claim extraction do not apply (single-claim extraction only);
-  the pass does not stamp `freshness` or `scan`** (it is not a content draft — the
-  9f stamp for it follows the normal drafted-this-run rule via Step 9's
-  classification).
+  the pass does not stamp `freshness` or `scan`, and 9f does not stamp them for it
+  either — a question pass is neither a draft nor a rework under §2's stamping
+  rule** (an appended answer must not advance `scan` and erase accumulated drift;
+  §2's rule carries the matching explicit exclusion).
 - **Settling:** stops classifying `unverified` at 2. Reset written by 9f on
   `new_draft`/`major_rewrite`; the draft-side fallback is restricted to the two
   9f-bypassing paths (`review.enabled: false` at finalization; 9b-skip evaluated
   after Step 9 returns — near-unreachable under default `auto_trigger`, noted).
 - **`questions: false`:** M3 route suppressed; row conjunct classifies such topics
   `current`.
+- **Decision-drift re-flag fix (companion to §2's scan freeze):** with maintain no
+  longer advancing `scan`, a decision-drift flag the user resolves *without* a
+  subsequent draft (Step 8 row 5's "resolve flags first, then draft if needed"
+  path) would be re-detected every maintain pass — §4's detection diffs
+  `<scan>..HEAD`. Fix: resolution writes `resolved_at: <current HEAD>` on the
+  frontmatter decision entry, and maintain §4 diffs from
+  `max(scan, resolved_at)` for entries that carry it.
 
 ### Orchestrator visibility
 
@@ -620,13 +661,15 @@ self-consistent.
   1. §2 + §1 + cross-cutting rules (incl. `human_sections`) — kiali-blocking.
   2. §5 + §4's gitignore seeding + snapshot-deletion site (Step 1) — **so
      `.scribe/` is ignored before §3's snapshots are ever written**.
-  3. §3 (agent, thin-skill reduction, brief contract, M2 reduction, snapshots),
-     gated by the **two-question** Cursor pre-check.
+  3. §3 (agent, dispatching-stub reduction, brief contract, M2 reduction,
+     snapshots), gated by the **three-question** pre-check (agent dispatchability,
+     identifier form, eval-runner report surfacing).
   4. §4 remainder.
   5. §6 (strip, then P2), §7, §8.
   6. **Evals:** regenerate all four suites in place against final contracts
-     (scribe-review's addressed via the retained thin skill — `/eval-analyze`'s
-     SKILL.md input exists; runner syntax needs no agent support). De-P3 carve-out:
+     (scribe-review's suite evaluates the agent **indirectly through the
+     dispatching stub** — or through the derived-copy fallback if pre-check
+     question 3 failed; `/eval-analyze`'s SKILL.md input exists either way). De-P3 carve-out:
      `recommendation_actionable`, `outputs.schema` lines, `review_quality`'s
      prompt, corresponding `eval.md` text. Keep model ids (`claude-opus-4-6`). Old
      fixture architecture removed.
@@ -655,6 +698,20 @@ self-consistent.
 
 ## Revision log
 
+- **rev 5.1 (2026-07-27):** closes the G/H fix-verification findings on rev 5 (all
+  round-3 findings otherwise confirmed resolved): `human_sections` wired into its
+  remaining two sites — maintain §8's formula (the steady-state recomputation that
+  would have re-manufactured pruning credit) and HARD RULE 4 (the trigger, whose
+  text asserted the old basis) — with all sites in wave 1; `human_sections`
+  declared a set (no-op on repeat credit); eval design corrected on the precedent
+  facts (code-reviewer is agent + full duplicated skill) and made operative: the
+  stub *dispatches* the agent and relays its report, pre-check question 3 verifies
+  the runner path, with a derived-copy fallback; question-pass stamping stated
+  identically in §2 and §4 (neither draft nor rework — no stamp); migration
+  section-credit rule made deterministic (exactly-one-body-match); full-clone SHA
+  guard wording fixed (§1 reports churn without running its diff);
+  decision-drift `resolved_at` field added so the frozen scan does not re-raise
+  resolved flags; manual-heading-rename residual recorded against Goal 2.
 - **rev 5 (2026-07-27):** voting round 3 (G, H) union. Design changes:
   `human_sections` positive attribution replacing absence-inference (kills both
   failure directions: Step-3 pruning inflation and draft-§8 zero-rule regression;
