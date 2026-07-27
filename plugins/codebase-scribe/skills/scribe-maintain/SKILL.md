@@ -166,13 +166,13 @@ Run these on every maintain pass:
 
 For each topic:
 
-**Freshness:** In a shallow clone, or when `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived recalculation for the topic — leave its `freshness` frontmatter value unchanged rather than recomputed. Otherwise: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100.
+**Freshness:** In a shallow clone, or when `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived recalculation for the topic — leave its `freshness` frontmatter value unchanged rather than recomputed. Otherwise: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100. Under `branching_strategy: main-only`, when `current_branch` != `default_branch` (from the brief), do not update `freshness` or `scan`.
 
 **Human Input:** (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100, 0 when the topic has zero `##` sections — heading↔slug test per the orchestrator's Step 3 prune / draft §4's slug algorithm; no zero-rule, since maintain never solicits answers. Neither diff-derived — still runs regardless of the guard above.
 
 **Completeness:** List depth-1 subdirectories of each watch_path. Completeness = (directories with at least one file referenced in the doc / total directories) x 100. Neither diff-derived — still runs regardless of the guard above.
 
-Update scores in the topic file's frontmatter (Freshness left at its prior value where skipped above). Update `scan` SHA to current HEAD if changes were made.
+Update scores in the topic file's frontmatter (Freshness left at its prior value where skipped above).
 
 ### 9. Escalation
 

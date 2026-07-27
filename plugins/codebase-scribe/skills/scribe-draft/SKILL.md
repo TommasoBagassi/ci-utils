@@ -59,7 +59,7 @@ When `rework: true` is set, follow this pipeline instead of the normal Per-Topic
 
 5. **Skip all questions.** Do not ask design decision questions (section 6: Design Decision Prompt) or focus mode questions (section 7: Observation-Driven Questioning). Rework is mechanical correction, not enrichment.
 
-6. **Update freshness only.** Set `freshness: 100`. Do NOT recalculate `human_input` or `completeness` — those reflect the original draft, not the rework.
+6. **Update freshness only.** Set `freshness: 100`. Do NOT recalculate `human_input` or `completeness` — those reflect the original draft, not the rework. Under `branching_strategy: main-only`, when `current_branch` != `default_branch` (from the brief), do not update `freshness` or `scan`.
 
 7. **Re-extract claims for changed sections.** Read `.claims.yml`. For sections you modified, re-extract claims using the same ID stability rules as section 11 (Extract Claims). Preserve all claims for sections you did not modify.
 
@@ -305,14 +305,14 @@ provenance:
 
 For each topic:
 These scores are non-negotiable for draft output:
-- **Freshness:** always `100` — the content was just generated from current code. Not a judgment call.
+- **Freshness:** always `100` — the content was just generated from current code. Not a judgment call. Under `branching_strategy: main-only`, when `current_branch` != `default_branch` (from the brief), do not update `freshness` or `scan`.
 - **Human Input:** calculate as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100, 0 when the topic has zero `##` sections — heading↔slug test per the orchestrator's Step 3 prune / draft §4's slug algorithm. The formula is universal: an empty `human_sections` list yields 0 with no special-cased zero-rule. If the user provided answers and a slug was added to `human_sections` per HARD RULE #4, the score reflects that immediately.
 - **Completeness:** calculate this one. Count depth-1 subdirectories of each watch_path. Completeness = (subdirectories with at least one file referenced in the doc / total subdirectories) x 100.
 
 ### 10. Write Topic File
 
 Write the complete topic file with:
-- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim (except where a rule in this skill names them as a writer — see HARD RULE 4 for `human_sections`): `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)
+- YAML frontmatter (scan SHA = current HEAD — only on the default branch under `main-only`, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim (except where a rule in this skill names them as a writer — see HARD RULE 4 for `human_sections`): `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)
 - Markdown content following the structure above
 
 ### 11. Extract Claims
@@ -634,6 +634,6 @@ Follow Step 9 (Review Orchestration) from the orchestrator command (`commands/co
 3. Invoke the `codebase-scribe:scribe-review` skill using the `Skill` tool (NOT the `Agent` tool, NOT code-reviewer or any other plugin) for each topic that triggers review (Step 9c)
 4. Process the verdict — block+rework for critical findings, annotate for minor (Step 9d)
 5. Check human gate conditions (Step 9e)
-6. Finalize — write review_notes, update scan SHA, regenerate STATUS.md (Step 9f)
+6. Finalize — write review_notes, update scan SHA, regenerate STATUS.md (Step 9f). Under `branching_strategy: main-only`, when `current_branch` != `default_branch` (from the brief), do not update `freshness` or `scan`.
 
 Only after the review gate completes for all topics should you return control to the orchestrator.

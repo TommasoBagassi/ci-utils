@@ -29,7 +29,7 @@ Handle every error gracefully — warn and continue with defaults, except where 
 
 ### Step 0: Branching strategy and autonomy detection
 
-Read `.scribe.yml` `branching_strategy` (default `main-only`). Detect current branch. If `main-only` and on a feature branch, tell user and exit. If `branch-local`, set output to `.scribe/branch-docs/`.
+Read `.scribe.yml` `branching_strategy` (default `main-only`). Detect current branch. Under `main-only`, when `current_branch` != the detected `default_branch`, refuse the run: tell the user documentation generation only proceeds on the default branch, and exit. If `branch-local`, set output to `.scribe/branch-docs/`.
 
 **Default-branch detection:** Fail-closed ladder, detected once per run by the orchestrator:
 
@@ -328,6 +328,7 @@ Then check whether the human gate (9e) should fire: if the run is autonomous, th
    - The current topic file content
    - The critical findings list
    - The source files cited in findings
+   - `default_branch`, `branching_strategy`, `current_branch`, `shallow: true|false`
 3. After rework completes, re-invoke `scribe-review` via the `Skill` tool (scoped re-review), passing as `args`:
    - Include `previous_findings` from the last review
    - Include `rework_iteration: 1`
@@ -397,8 +398,8 @@ When a topic passes review (or is approved/overridden):
        reason: "User override — findings accepted as known limitations"
    ```
 
-3. Update `scan` SHA to current HEAD
-4. Update `freshness: 100`
+3. Update `scan` SHA to current HEAD — only for topics whose content was drafted or reworked in this run. Under `branching_strategy: main-only`, when `current_branch` != `default_branch` (from the brief), do not update `freshness` or `scan`.
+4. Update `freshness: 100` — only for topics whose content was drafted or reworked in this run. After a maintain-only pass, preserve the freshness maintain §8 computed and do not advance `scan`.
 5. Mark topic as `complete` in session.json
 6. Regenerate `docs/agents/STATUS.md` with updated scores (scores sourced from frontmatter), stale flags, and review notes
 
