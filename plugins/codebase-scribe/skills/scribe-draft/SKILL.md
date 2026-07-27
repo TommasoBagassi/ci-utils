@@ -157,7 +157,7 @@ Also read:
 7. After writing, **remove `migration_source` and `migration_sections` from the frontmatter** — they've been consumed
 8. After drafting, compare the total content from the referenced migration sections against what you wrote. If >20% of the original content by line count wasn't incorporated, flag it: "Some content from the original AGENTS.md was not incorporated into this topic. Review the original at `AGENTS.md.bak` sections: [list]."
 
-**Redraft vs. stub draft:** for a non-stub topic, draft preserves the existing top-level heading set and rewrites section bodies in place, adding a TL;DR and a `## Links` section only if absent; the 5-section skeleton applies to stub drafts only.
+**Redraft vs. stub draft:** for a non-stub topic, draft preserves the existing top-level heading set and rewrites section bodies in place — except that sections listed in `human_sections` may be extended, but their existing prose must be preserved verbatim (Safety Rule 2) — adding a TL;DR and a `## Links` section only if absent; the 5-section skeleton applies to stub drafts only.
 
 For a stub draft, write the topic file following this structure:
 
@@ -306,13 +306,13 @@ provenance:
 For each topic:
 These scores are non-negotiable for draft output:
 - **Freshness:** always `100` — the content was just generated from current code. Not a judgment call.
-- **Human Input:** calculate as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100 — heading↔slug test per the orchestrator's Step 3 prune / draft §4's slug algorithm. The formula is universal: an empty `human_sections` list yields 0 with no special-cased zero-rule. If the user provided answers and a slug was added to `human_sections` per HARD RULE #4, the score reflects that immediately.
+- **Human Input:** calculate as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100, 0 when the topic has zero `##` sections — heading↔slug test per the orchestrator's Step 3 prune / draft §4's slug algorithm. The formula is universal: an empty `human_sections` list yields 0 with no special-cased zero-rule. If the user provided answers and a slug was added to `human_sections` per HARD RULE #4, the score reflects that immediately.
 - **Completeness:** calculate this one. Count depth-1 subdirectories of each watch_path. Completeness = (subdirectories with at least one file referenced in the doc / total subdirectories) x 100.
 
 ### 10. Write Topic File
 
 Write the complete topic file with:
-- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim: `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)
+- YAML frontmatter (scan SHA = current HEAD, scores, inferred_sections, watch_paths (the repaired value from the brief — never narrowed by draft), empty stale_flags, and preserved verbatim (except where a rule in this skill names them as a writer — see HARD RULE 4 for `human_sections`): `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present)
 - Markdown content following the structure above
 
 ### 11. Extract Claims
@@ -368,7 +368,7 @@ Append claims to `docs/agents/.claims.yml`. Include `_meta` with the topic's cur
 
 After writing each topic and extracting claims, run this checklist:
 - [ ] Structure check (two-tier): stub topics have exactly these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`, plus TL;DR; mature topics have TL;DR, and free-form domain headings are legitimate
-- [ ] Frontmatter has `freshness: 100` and `human_input` is calculated as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100
+- [ ] Frontmatter has `freshness: 100` and `human_input` is calculated as (slugs in `human_sections` whose headings exist / total fence-aware `##` sections) x 100, 0 when the topic has zero `##` sections
 - [ ] Completeness is a calculated percentage, not an estimate
 - [ ] Claims were written to `.claims.yml` for this topic
 - [ ] The TL;DR blockquote exists as the first line after the `#` heading

@@ -124,7 +124,7 @@ After discover completes, tell the user: "Stubs created. Run `/codebase-scribe` 
 
 1. **Read all topic files** — for each `.md` in `docs/agents/` (excluding STATUS.md), extract `scribe:` frontmatter fields: `scan`, `freshness`, `human_input`, `completeness`, `inferred_sections` (list of `{id, heading}`), `human_sections` (list of top-level slugs), `decisions`, `question_passes` (absent treated as `0`), `watch_paths`, `stale_flags`.
 
-2. **Prune orphaned inferred_sections and human_sections** — heading existence is tested by applying draft §4's slug algorithm to each fence-aware `##` heading (headings inside fenced code blocks don't count) and comparing; that same fence-aware `##` heading set is also `human_input`'s denominator (draft §8, maintain §8).
+2. **Prune orphaned inferred_sections and human_sections** — heading existence is tested by applying draft §4's slug algorithm to each fence-aware heading (headings inside fenced code blocks don't count) and comparing; that same fence-aware `##` heading set is also `human_input`'s denominator (draft §8, maintain §8).
    - `inferred_sections`: compare each entry against actual headings at its own level — entries stored with a `##` heading against actual `##` headings, entries stored with a `###` heading against actual `###` headings (pre-existing bug fixed here: `###` entries were previously compared against `##` headings and so were always pruned on the first pass). Remove entries with no matching heading.
    - `human_sections`: each entry is a top-level slug; remove it the same way `inferred_sections` orphans are pruned — if its `##` heading no longer exists.
 
