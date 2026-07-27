@@ -21,6 +21,7 @@ You receive from the orchestrator:
 - List of all topics with their current frontmatter
 - Per-topic drift classification (current / drifted / undercooked)
 - List of topics with changed watch_paths (from Phase 0's git diff)
+- `default_branch`, `branching_strategy`, `current_branch`, and `shallow: true|false` — use the passed values; never re-detect
 
 Read `.scribe.yml` if it exists for drift sensitivity settings.
 

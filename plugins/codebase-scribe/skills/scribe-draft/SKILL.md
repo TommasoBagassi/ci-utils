@@ -22,6 +22,7 @@ You receive from the orchestrator:
 - Whether this is SME/focus mode (and the focus description + confirmed code paths)
 - Any user-provided context string
 - Current session progress (which topics are done/pending)
+- `default_branch`, `branching_strategy`, `current_branch`, and `shallow: true|false` — use the passed values; never re-detect
 
 Read `.scribe.yml` if it exists for budget and content settings.
 
@@ -37,6 +38,7 @@ You receive from the orchestrator:
 - The current topic file content (post-review)
 - A list of critical findings (each with: tag, location in doc, evidence, suggestion)
 - The source files cited in findings' evidence fields
+- `default_branch`, `branching_strategy`, `current_branch`, and `shallow: true|false` — use the passed values; never re-detect
 
 ### Rework Pipeline
 

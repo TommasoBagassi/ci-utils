@@ -10,13 +10,13 @@ You are the Codebase Scribe — an agent that generates, enriches, and maintains
 
 ## Error Handling
 
-Handle every error gracefully — warn and continue with defaults:
+Handle every error gracefully — warn and continue with defaults, except where an entry below explicitly refuses the run:
 1. **Malformed YAML frontmatter** — treat as stub, warn user
-2. **Missing or invalid .scribe.yml** — this file is optional. If missing or invalid, silently fall back to defaults: `output.docs_dir: docs/agents`, `output.agents_md: AGENTS.md`, `branching_strategy: main-only`, `budgets.files_per_topic: 30`, `budgets.files_per_session: 150`, `budgets.topics_per_run: 3`, `drift.sensitivity: medium`, `drift.decision_lines_threshold: 5`, `review.enabled: true`, `review.diff_threshold: 20`, `review.auto_trigger: [new_draft, major_rewrite, claim_change, section_change, large_diff]`, `agents_md_policy: auto`
+2. **Missing or invalid .scribe.yml** — this file is optional. If missing or invalid, silently fall back to defaults: `output.docs_dir: docs/agents`, `output.agents_md: AGENTS.md`, `branching_strategy: main-only`, `default_branch: auto-detect`, `budgets.files_per_topic: 30`, `budgets.files_per_session: 150`, `budgets.topics_per_run: 3`, `drift.sensitivity: medium`, `drift.decision_lines_threshold: 5`, `review.enabled: true`, `review.diff_threshold: 20`, `review.auto_trigger: [new_draft, major_rewrite, claim_change, section_change, large_diff]`, `agents_md_policy: auto`
 3. **Corrupt .claims.yml** — start with empty claims, warn
-4. **Git unavailable / shallow clone** — skip git-dependent features, warn
-5. **Detached HEAD** — fall back to `main-only` behavior
-6. **No remote** — skip remote operations, non-fatal
+4. **Git unavailable entirely** (not a repo, or no git binary) — under `main-only`, refuse; otherwise pass null `default_branch` and skip git-dependent features, warn
+5. **Detached HEAD** — `main-only` refuses; `branch-local` proceeds with `current_branch` = HEAD SHA; `branch-commit` refuses
+6. **No remote OR unresolvable default branch** — no remote at all: probe local `refs/heads/main`, then `refs/heads/master`, and use it if found; only when neither exists fall back to the current branch (skip remote operations, non-fatal); remote exists but unresolved: under `main-only`, refuse and tell the user to set `default_branch`; under other strategies, pass null
 
 ## Parse Invocation
 
@@ -29,6 +29,17 @@ Handle every error gracefully — warn and continue with defaults:
 ### Step 0: Branching strategy and autonomy detection
 
 Read `.scribe.yml` `branching_strategy` (default `main-only`). Detect current branch. If `main-only` and on a feature branch, tell user and exit. If `branch-local`, set output to `.scribe/branch-docs/`.
+
+**Default-branch detection:** Fail-closed ladder, detected once per run by the orchestrator:
+
+1. `.scribe.yml` `default_branch` (flat key; in the Error Handling defaults list — default: auto-detect — and the README config block).
+2. `git symbolic-ref refs/remotes/origin/HEAD`.
+3. `git rev-parse --verify origin/main`, then `origin/master`.
+4. Remote exists but unresolved: under `main-only`, **refuse** and tell the user to set `default_branch`; under other strategies, pass null (guards inert).
+5. **No remote at all: probe local `refs/heads/main`, then `refs/heads/master`, and use it if found; only when neither exists fall back to the current branch.** (A local-only repo with `main` and `feature/x` must not have the gate compare `feature/x` to itself — that was the exact hole the ladder exists to close.)
+6. **Git unavailable entirely** (not a repo, or no git binary): under `main-only`, refuse; otherwise pass null. Error Handling #4 is noted as edited — its "warn and continue" no longer applies to the `main-only` gate (the preamble's refusal exception covers it).
+
+Detached HEAD: `main-only` refuses; `branch-local` proceeds with `current_branch` = HEAD SHA; `branch-commit` refuses.
 
 **Autonomous detection:** Check whether this invocation originated from a user prompt containing `/codebase-scribe`. If the skill was invoked via CronCreate, hook, or subagent dispatch (no `/codebase-scribe` in the user's conversation turn), set `autonomous: true` in session state. This flag is used by the human gate in Step 9e.
 
