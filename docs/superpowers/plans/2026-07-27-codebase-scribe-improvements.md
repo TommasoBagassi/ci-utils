@@ -216,8 +216,10 @@ Replace `Body empty/<50 words, or placeholder text, or has migration_source` wit
 
 ```bash
 cd plugins/codebase-scribe
-# all four five-heading sites gone (pattern verified to match all four baseline sites and nothing else outside eval/):
-! grep -rniE "(all|these) 5 (\`?##\`? )?(sections|headings)|exactly these 5|: 5 headings" commands skills --include="*.md" | grep -v '/eval'
+# all four five-heading sites gone as *unscoped* rules (pattern verified to match all four baseline sites and
+# nothing else outside eval/); the two-tier contract legitimately reintroduces "5 sections/headings" wording at
+# the Content-standards and §12-checklist sites, but only scoped to stubs, so those hits are excluded by name:
+! grep -rniE "(all|these) 5 (\`?##\`? )?(sections|headings)|exactly these 5|: 5 headings" commands skills --include="*.md" | grep -v '/eval' | grep -vi stub
 ! grep -rn "50 words" commands/codebase-scribe.md
 grep -n "will be populated" commands/codebase-scribe.md   # stub row present
 # three-way marker invariant: discover's template still writes the exact anchored prefix
@@ -321,7 +323,8 @@ git commit -m "scribe: scan-SHA validation, shallow gate, normative Step 5 rows 
 
 **Files:**
 - Modify: `plugins/codebase-scribe/commands/codebase-scribe.md` — Step 3 (repair block)
-- Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — delete §9 "Update Watch Paths" (~lines 310–313); §10's watch_paths mention (~line 317)
+- Modify: `plugins/codebase-scribe/skills/scribe-draft/SKILL.md` — delete §9 "Update Watch Paths" (~lines 310–313); §10's watch_paths mention (~line 317); Inputs + Rework Brief Contents (gain `watch_paths`)
+- Modify: `plugins/codebase-scribe/skills/scribe-maintain/SKILL.md` — Inputs (gains `watch_paths`; Step 2 requires all three brief blocks, which this file carries one of)
 
 **Interfaces:**
 - Consumes: Task 3's brief threading (adds `watch_paths` to the threaded fields).
