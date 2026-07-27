@@ -61,7 +61,7 @@ When `rework: true` is set, follow this pipeline instead of the normal Per-Topic
 
 7. **Re-extract claims for changed sections.** Read `.claims.yml`. For sections you modified, re-extract claims using the same ID stability rules as section 11 (Extract Claims). Preserve all claims for sections you did not modify.
 
-8. **Validate output.** Run the same checklist as section 12 (Validate Output): 5 headings, TL;DR, scores, claims.
+8. **Validate output.** Run the same checklist as section 12 (Validate Output): the two-tier structure check (per §12), TL;DR, scores, claims.
 
 9. **Save session progress.** Mark topic as `rework_pass_<iteration>` in session.json.
 
@@ -155,7 +155,7 @@ Also read:
 7. After writing, **remove `migration_source` and `migration_sections` from the frontmatter** — they've been consumed
 8. After drafting, compare the total content from the referenced migration sections against what you wrote. If >20% of the original content by line count wasn't incorporated, flag it: "Some content from the original AGENTS.md was not incorporated into this topic. Review the original at `AGENTS.md.bak` sections: [list]."
 
-**Every topic file MUST follow this exact structure** — no exceptions, no alternative layouts:
+**Positive redraft instruction (the §3 rewrite is a template change, not just a check change):** for a non-stub topic, draft preserves the existing top-level heading set and rewrites section bodies in place, adding a TL;DR and a `## Links` section only if absent; the 5-section skeleton applies to stub drafts only.
 
 Write the topic file following this structure:
 
@@ -196,7 +196,7 @@ what alternatives were considered.]
 
 **Content standards:**
 - **Every topic MUST start with a blockquote TL;DR** for relevance routing. This is not optional. Example: `> This doc covers the Go backend architecture. For frontend React architecture, see [frontend-architecture.md](frontend-architecture.md).`
-- **Every topic MUST have all 5 sections** (Key Entry Points, Patterns & Conventions, Gotchas, Dependencies & Context, Links). If a section has nothing to say, write one line explaining why (e.g., "No known gotchas for this area yet.") rather than omitting the section.
+- **Content the draft generates for a stub MUST have all 5 sections** (Key Entry Points, Patterns & Conventions, Gotchas, Dependencies & Context, Links). If a section has nothing to say, write one line explaining why (e.g., "No known gotchas for this area yet.") rather than omitting the section.
 - **Concrete over abstract.** Reference actual file paths, function names, commands. "The cache is populated by informers in `cache/kube_cache.go:NewKubeCache()`" not "the cache uses an informer-based approach."
 - **Present state only — no changelog language.** Write what the code *is*, never what it *was* or *changed to*. Forbidden phrases: "was updated", "now supports", "was added", "formerly", "previously", "changed from X to Y", "gained a", "was renamed", "is now". If you are updating a section because the code changed, rewrite the section to describe the current state as if it had always been that way. The git history is the changelog; this doc is not.
 - **Target 200-400 lines.** If content exceeds 500 lines, propose a split to the user.
@@ -369,7 +369,7 @@ Append claims to `docs/agents/.claims.yml`. Include `_meta` with the topic's cur
 ### 12. Validate Output
 
 After writing each topic and extracting claims, run this checklist:
-- [ ] File has exactly these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`
+- [ ] Structure check (two-tier): stub topics have exactly these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`, plus TL;DR; mature topics have TL;DR, and free-form domain headings are legitimate
 - [ ] Frontmatter has `freshness: 100` and `human_input` is calculated (0 if no user input, higher if sections were removed from `inferred_sections`)
 - [ ] Completeness is a calculated percentage, not an estimate
 - [ ] Claims were written to `.claims.yml` for this topic

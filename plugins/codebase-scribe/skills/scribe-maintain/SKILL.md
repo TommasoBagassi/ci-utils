@@ -140,7 +140,7 @@ contradictions:
 
 Run these on every maintain pass:
 
-**Structural validation:** Verify each topic file has these 5 `##` headings: `Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`. Also verify the TL;DR blockquote exists. If any are missing, flag for the user (do not auto-add — maintain never adds content).
+**Structural validation:** Flag a missing TL;DR blockquote on any topic. On stub topics, additionally flag any missing skeleton section (`Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies & Context`, `Links`). On mature topics, add an advisory note for a missing `## Links` section. If any are missing, flag for the user (do not auto-add — maintain never adds content).
 
 **Actionability check:** Scan each section. If a section is more than 5 lines of prose with zero code references (file paths, commands, function names), flag it:
 > "Section '[heading]' in [topic].md has no concrete code references. Consider enriching it with specific file paths and commands."

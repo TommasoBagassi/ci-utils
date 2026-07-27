@@ -124,7 +124,7 @@ For each topic, run `git diff --stat <scan>..HEAD -- <watch_paths>`:
 
 | Category | Criteria | Priority |
 |----------|----------|----------|
-| `stub` | Body empty/<50 words, or placeholder text, or has `migration_source` | 1 (highest) |
+| `stub` | body is empty or contains a line beginning with the stub placeholder marker (`*Stub — will be populated`) outside fenced code blocks, or has `migration_source` | 1 (highest) |
 | `escalated` | completeness == 0 AND has stale_flag with `reason: "escalated"` (set by maintain skill's Step 9) | 2 |
 | `drifted` | watch_paths changed since scan SHA | 3 |
 | `decision_drift` | has stale_flag with `reason: "decision_drift"` and topic is otherwise current | 4 |
