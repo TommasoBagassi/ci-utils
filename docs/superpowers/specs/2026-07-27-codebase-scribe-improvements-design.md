@@ -109,12 +109,25 @@ draft Rework step 8 and maintain §7) requires all five headings of a non-stub t
 
 ### Default-branch detection (prerequisite for the branch gate)
 
-The plugin never hardcodes `main`. The default branch is detected once per run:
-`git symbolic-ref refs/remotes/origin/HEAD` (strip the `refs/remotes/origin/` prefix);
-if that fails (no remote — Error Handling #6), fall back to the current branch. A
-`.scribe.yml` key `branching.default_branch` overrides detection. Everywhere this spec
-says "default branch", this detected value is meant. (kiali's default branch is
-`master`; a literal `main` comparison would hard-refuse the kiali completion run.)
+The plugin never hardcodes `main`. The default branch is detected once per run, with a
+**fail-closed** ladder — `refs/remotes/origin/HEAD` is written by `git clone` but not
+by `git remote add`, and is absent in CI checkouts, so its failure must not be treated
+as "no remote":
+
+1. `.scribe.yml` `branching.default_branch`, if set — overrides everything.
+2. `git symbolic-ref refs/remotes/origin/HEAD` (strip the `refs/remotes/origin/`
+   prefix).
+3. Probe `git rev-parse --verify origin/main`, then `origin/master`.
+4. If a remote exists but none of the above resolves: under `main-only`, **refuse the
+   run** and tell the user to set `branching.default_branch` — never fall back to the
+   current branch, which would compare the branch against itself and pass the gate on
+   exactly the feature-branch runs it exists to block.
+5. Only when no remote exists at all (Error Handling #6): fall back to the current
+   branch.
+
+Everywhere this spec says "default branch", this detected value is meant. (kiali's
+default branch is `master`; a literal `main` comparison would hard-refuse the kiali
+completion run.)
 
 ### Scan-SHA validation (H6)
 
@@ -131,7 +144,7 @@ At orchestrator Step 3 (frontmatter read), every topic's `scan` value is validat
   ("Body empty/<50 words, or placeholder text, or has `migration_source`") and does
   not consider `scan`. The rule: `scan: null` + stub body (placeholder marker) →
   `stub` as today; `scan: null` + real body (crashed draft, hand-authored topic) →
-  classifies **`undercooked`** (see below), routing it to a full draft.
+  classifies **`undercooked`** (single definition below), routing it to a full draft.
 
 On validation failure (bad shape, unresolvable, or unreachable): the topic classifies
 `drifted`, never `current`, and **its frontmatter `freshness` is set to 0 immediately
@@ -161,9 +174,11 @@ their diff-based branches.
   drop. Under the current rules that would mass-classify topics as `undercooked`
   (completeness < 30) and queue redrafts of every kiali-shaped topic on every run,
   forever — a 40-subdir `pkg/` watch can never reach 30% within a 30-file budget. The
-  `undercooked` row is therefore redefined: **`undercooked` = completeness < 30 AND
-  `scan` is null** (never successfully drafted — the crashed-draft/hand-authored
-  case). Topics that completed a draft are never auto-redrafted for low completeness;
+  `undercooked` row is therefore redefined — one definition, no completeness conjunct
+  (completeness no longer drives redraft at all): **`undercooked` = `scan` is null AND
+  the body is not a stub** (never successfully drafted — the crashed-draft/
+  hand-authored case, at any completeness score). Topics that completed a draft are
+  never auto-redrafted for low completeness;
   low scores surface in STATUS.md and as review `COVERAGE_GAP` minors. The forced-
   redraft path for damaged topics remains maintain §9's escalation (`escalated` flag +
   `completeness: 0`), which is an explicit, bounded trigger.
@@ -521,8 +536,12 @@ self-consistent (no reference to a case number that no longer exists).
   6. **Evals:** regenerate eval cases/schemas for discover, draft, maintain against
      the final contracts, and **relocate + regenerate the existing scribe-review eval
      suite** (`skills/scribe-review/eval.yaml` + 5 cases — it exists today and §3
-     deletes its parent directory) to `agents/scribe-review/eval*` (mirroring the
-     per-skill layout). Its `skill: codebase-scribe:scribe-review` key and
+     deletes its parent directory) to a sibling tree **outside the agent-discovery
+     path**: `plugins/codebase-scribe/evals/scribe-review/`. (NOT under `agents/` —
+     agent discovery keys on `.md` files there, and eval cases contain markdown
+     fixtures that could be loaded as agent definitions; the per-skill layout was only
+     safe because `skills/` discovery keys on `SKILL.md`.) Its
+     `skill: codebase-scribe:scribe-review` key and
      `dataset.path` must be updated to address the agent — exact runner syntax for
      agent-dispatch is verified against the eval harness at implementation time; the
      `recommendation_actionable` judge is rewritten for the new P3 recommendation
@@ -563,6 +582,16 @@ self-consistent (no reference to a case number that no longer exists).
 
 ## Revision log
 
+- **rev 2.1 (2026-07-27):** fixes for the three defects reviewer B's fix-verification
+  found in rev 2 itself: default-branch detection made fail-closed (probe
+  `origin/main`/`origin/master` after `symbolic-ref`; with a remote present but
+  undetectable default, refuse under `main-only` instead of falling back to the
+  current branch, which would have passed the gate on exactly the runs it blocks);
+  `undercooked` given a single definition (`scan` null AND body not stub — the
+  completeness conjunct dropped, resolving the conflict between the two rev-2
+  bullets); scribe-review eval relocated to `evals/scribe-review/` outside the
+  agent-discovery path (markdown fixtures under `agents/` could be loaded as agent
+  definitions).
 - **rev 2 (2026-07-27):** reworked after review round 1 (two fresh Opus reviewers,
   both NOT_APPROVED). Major changes: default-branch detection replaces hardcoded
   `main`; branch gate guards `scan` as well as `freshness` and is enforced at the
