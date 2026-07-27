@@ -76,32 +76,40 @@ Three writer-specific consequences:
    data §4 exists to make durable.
 2. **Human attribution survives redrafts:** `inferred_sections` IS explicitly named
    by draft §10, so the carry-through rule alone does not protect the `human_input`
-   score. Added rule: when draft redrafts a topic, any top-level section slug that
-   was absent from the pre-invocation `inferred_sections` (per the Step 8 snapshot —
-   i.e. a section previously credited to human input under HARD RULE 4) **stays
-   absent** from the regenerated `inferred_sections`, provided the section survives
-   into the redraft (draft Safety Rule 2 already forbids deleting verified content).
-   `human_input` therefore cannot regress across a redraft unless the human-touched
-   sections themselves were removed.
+   score. Added rule, keyed on **positive evidence, not list-absence**: when draft
+   redrafts a topic, a top-level section slug stays out of the regenerated
+   `inferred_sections` only if **the pre-invocation file was NOT a stub (§1's test)**
+   AND the slug was absent from its `inferred_sections` AND the section's content
+   survives into the redraft (extended, not replaced — if draft rewrites the
+   section's content wholesale, its slug re-enters `inferred_sections`; the
+   attribution is not a one-way ratchet). The not-a-stub conjunct is load-bearing: a
+   discover-created stub has `inferred_sections: []` and all five headings, so a pure
+   absence test would score every freshly drafted stub as 100% human input —
+   inverting draft §8's "no user answers → score 0" rule and the README's "no false
+   confidence" guarantee. `human_input` therefore cannot regress across a redraft of
+   a mature topic unless the human-touched sections were removed or rewritten.
 3. **Discover never overwrites:** discover refuses to write a topic file that already
    exists and reports the collision to the orchestrator instead. (Discover is
    reachable while mature topics exist — focus mode Step 6d and Step 8 row 7 both
    route new-topic proposals through it — and its "this EXACT format" stub write
    would otherwise destroy a mature topic on a kebab-name collision.)
 
-**Acceptance:** redraft a topic carrying a `decisions:` entry, a `question_passes`
-value, and one human-credited section; all three survive (the section stays out of
-`inferred_sections`); a discover invocation naming an existing topic writes nothing
-and reports the collision.
+**Acceptance:** redraft a mature topic carrying a `decisions:` entry, a
+`question_passes` value, and one human-credited section; all three survive (the
+section stays out of `inferred_sections`); **the first draft of a stub yields
+`human_input: 0` when no questions were answered** (the not-a-stub conjunct); a
+discover invocation naming an existing topic writes nothing and reports the
+collision.
 
 ## §1. Structure contract (two-tier) — findings H7, M1
 
 ### Contract
 
 - **Stub topics**: a topic whose body is empty or contains a line **beginning with**
-  the stub placeholder marker (`*Stub — will be populated`) — anchored so a mature
-  topic that merely *quotes* the marker (e.g. documentation about this plugin) is not
-  classified stub forever. The full 5-section skeleton is required at creation,
+  the stub placeholder marker (`*Stub — will be populated`), **ignoring lines inside
+  fenced code blocks** — anchored and fence-aware so a mature topic that quotes or
+  verbatim-reproduces the marker (e.g. documentation about this plugin's own
+  templates) is not classified stub forever. The full 5-section skeleton is required at creation,
   unchanged (`Key Entry Points`, `Patterns & Conventions`, `Gotchas`, `Dependencies &
   Context`, `Links`, plus TL;DR blockquote).
 - **Mature topics**: any topic that is not a stub by the test above. The test is
@@ -216,10 +224,13 @@ by the Step 5 rows below.
   table, which consumes §1's churn number and has no input without it**, maintain
   §4/§5/§8, the Step 4 session-SHA check) and warn once, per Error Handling #4.
   Topics classify from body and frontmatter state alone; no frontmatter is degraded;
-  freshness holds its last recorded value (covered by the warning); **and 9f does not
-  stamp `freshness: 100` under the shallow gate** — a positive freshness assertion
-  from a run whose drift checks were skipped would be the same false confidence this
-  section exists to remove.
+  freshness holds its last recorded value (covered by the warning) — **except for
+  topics actually drafted this run**: `freshness: 100` on content just generated from
+  current HEAD is a true assertion at any clone depth, so draft §8/§10 and 9f stamp
+  it normally for drafted topics. (An earlier revision suppressed 9f's stamp under
+  the gate; that held 9f and the writer of record — draft — to different rules for
+  the same value, and the value is truthful. Undrafted topics simply keep their last
+  freshness, which the warning covers.)
 - **Shape:** must match `^[0-9a-f]{7,40}$` (the README's example `"a1b2c3d4"` stays
   valid; the literal `"HEAD"` fails).
 - **Resolution and reachability:** `git cat-file -e <sha>` AND
@@ -234,8 +245,8 @@ step, maintain §10, command Step 10, command 9f item 6, and discover on seed)
 **sources its scores from frontmatter**, so the degraded value must be persisted
 where they read.
 
-**Step 5 row rewrites — the rules, not just the outcomes** (three rows change; the
-replacement text is normative):
+**Step 5 row rewrites — the rules, not just the outcomes** (five rows change — two
+of them owned by §1 and §4 respectively; the replacement text is normative):
 
 | Row | New criterion |
 |---|---|
@@ -370,21 +381,26 @@ fully-drafted topic with completeness 20 classifies `current`.
   kept, fake commands removed: "Run `/codebase-scribe` again — targeted correction of
   sections: <list>." vs "Run `/codebase-scribe` again — full redraft recommended."
   The reviewer guidance paragraph stays.
-- **9d escalation mapping (renumbered 9e):** all three 9d escalation routes ("same
-  finding persists", "new critical findings", "iteration >= 2") present 9e's case-2
-  option set (no "Request changes") — all three represent an exhausted or
-  unproductive rework loop. (This ambiguity predates the spec; §8's renumbering is
-  where it gets resolved.)
+- **9d escalation mapping (renumbered 9e):** 9e's condition 2 is **widened to match**
+  — "the rework loop escalated: cap exhausted, same finding persisted, or new
+  critical findings appeared" — so that all three 9d escalation routes satisfy the
+  condition whose option set (case 2, no "Request changes") they present. (Without
+  the widening, "new critical findings" at iteration 1 would reach 9e matching no
+  condition. This ambiguity predates the spec; §8's renumbering is where it gets
+  resolved.)
 
 ### Cursor pre-check (gate for the skill deletion)
 
-Before `skills/scribe-review/SKILL.md` is deleted, verify **two things** in both
-Claude Code and Cursor: (1) plugin-defined agents are dispatchable at all
+Before `skills/scribe-review/SKILL.md` is deleted, verify **three things**: (1) in
+both Claude Code and Cursor, plugin-defined agents are dispatchable at all
 (`plugins/code-reviewer/agents/` ships three agents through this marketplace —
 precedent, not proof); (2) the exact `subagent_type` identifier that resolves
-(namespaced vs bare — see Brief contract above). If either fails in Cursor, stop and
-surface the decision. The full Cursor audit remains wave 7; these two questions
-cannot wait, because §3 removes the fallback.
+(namespaced vs bare — see Brief contract above); (3) **whether the eval harness
+discovers suites outside `skills/*/eval.yaml`** — the eval-tree relocation happens
+in this same wave, and if discovery globs `skills/`, the relocated suite would be
+silently unfindable for three waves, not "stale but present". If (1) or (2) fails in
+Cursor, stop and surface the decision. The full Cursor audit remains wave 7; these
+questions cannot wait, because §3 removes the fallback and moves the suite.
 
 ### Snapshots to disk (M4)
 
@@ -503,10 +519,16 @@ Same explicit contract shape as rework mode:
   when the just-computed 9a classification is `new_draft` or `major_rewrite`. The
   draft-side fallback is **strictly a fallback, active only on the two 9f-bypassing
   paths** (`review.enabled: false`, or the user chose skip at 9b): on those paths
-  only, draft resets the counter when it performs a full redraft. It is NOT active
-  when Step 9 runs — otherwise a full redraft that 9a then classifies `claim_change`
-  would have already reset the counter that 9f deliberately declines to reset,
-  re-opening the settled loop for a consistently-skipping user on churny topics.
+  only, draft resets the counter for a topic it fully redrafted. **Timing:** under
+  `review.enabled: false` the reset applies at finalization of the redraft; on the
+  9b-skip path — knowable only after Step 9 runs — draft writes the reset after
+  Step 9 returns for that topic. (In practice the 9b path is nearly unreachable for
+  full redrafts: they classify `new_draft`/`major_rewrite`, which the default
+  `auto_trigger` always reviews — the branch exists for customized `auto_trigger`
+  configs.) The fallback is NOT active when 9f runs for the topic — otherwise a full
+  redraft that 9a then classifies `claim_change` would have already reset the
+  counter that 9f deliberately declines to reset, re-opening the settled loop for a
+  consistently-skipping user on churny topics.
 - **`questions: false` (§7):** the M3 route is suppressed; the §2 row's
   `questions`-conjunct makes such topics classify `current`.
 
@@ -568,13 +590,17 @@ passes, and a settled topic redrafted through a running Step 9 stays settled unl
   commands from root build files; unknown cells say "see build files". The
   ARCHITECTURE.md pointer line (`> For the full architecture index, see
   [ARCHITECTURE.md](ARCHITECTURE.md).`, under Architecture at a Glance) is included
-  when that file exists at write time — **and 12d adds it later if it is absent and
-  the file has since appeared** (a seed-time hub would otherwise never gain the link,
-  since drafting creates ARCHITECTURE.md after the hub).
+  when that file exists at write time — **and 12d adds it later, in full-management
+  mode only, under the Architecture at a Glance heading if present** (append-only
+  mode is restricted to the Documentation section and may lack that heading; a
+  seed-time hub would otherwise never gain the link, since drafting creates
+  ARCHITECTURE.md after the hub).
   Three call sites route here: 12b option 1, 12c "Does not exist", 12e option 1
-  (Step 1's orphan generator is deleted; orphan mode routes to 12c). **Orphan-mode
-  input gap closed:** Step 2 never ran there, so the 12c creation path reads the repo
-  README and root build file first (bounded: those two reads only).
+  (Step 1's orphan generator is deleted; orphan mode routes to 12c). **Identity-read
+  allowance for call sites where Step 2 never ran:** both the 12c creation path
+  (orphan mode) AND 12b option 1 (`agents_md_policy: manual`, file deleted, normal
+  run) read the repo README and root build file before instantiating 12f (bounded:
+  those two reads only).
 - **Migration-mode ordering (regression guard):** the seed-flow change routes
   Migration mode through Step 12 in the same run, and 12e option 1 renames the very
   file that pending topics' `migration_source` points at — draft would later read a
@@ -692,9 +718,11 @@ All autonomous-mode machinery is deleted:
   Otherwise, proceed directly to finalize (9f)." (Dropping the whole sentence pair
   would orphan 9e's surviving condition AND the PASS path's route to 9f.)
 - Step 9e trigger condition #1 and its detection paragraph, with renumbering: 9e's
-  conditions become 1 (new_draft/major_rewrite) and 2 (rework cap exhausted); the
+  conditions become 1 (new_draft/major_rewrite) and 2 (**the rework loop escalated:
+  cap exhausted, same finding persisted, or new critical findings appeared** — the
+  widened wording from §3, so all three 9d escalation routes satisfy it); the
   Precedence paragraph and both option-set headings rewritten; README's "or
-  autonomous runs" removed. All three 9d escalation routes map to case 2 (§3).
+  autonomous runs" removed.
 
 **Acceptance:** `grep -riE 'autonom(ous|y)' plugins/codebase-scribe` returns nothing
 — excluding `IMPROVEMENT-REPORT.md` until wave 7 deletes it (eval fixtures contain no
@@ -717,10 +745,9 @@ matches; that carve-out is unnecessary); 9e case numbering is self-consistent.
   5. §6 (strip first, then P2), §7, §8, P4/P5 polish.
   6. **Evals:** regenerate discover/draft/maintain suites against final contracts;
      regenerate the relocated scribe-review suite including `eval.md`. The `skill:`
-     key is updated to address the agent — **implementation-time verification covers
-     both the runner's agent-dispatch syntax AND whether the harness discovers
-     suites outside `skills/*/eval.yaml`** (if discovery globs `skills/`, the
-     relocated suite would silently stop being found — resolve before regenerating).
+     key is updated to address the agent — implementation-time verification covers
+     the runner's agent-dispatch syntax (suite *discovery* outside `skills/` was
+     already verified by the wave-3 pre-check, which gates the relocation itself).
      "Keep runner config" excludes everything encoding the removed P3 strings
      (`recommendation_actionable`, `outputs.schema` lines, `review_quality`'s
      prompt, corresponding `eval.md` text). Keep model ids (`claude-opus-4-6`). Old
@@ -752,6 +779,19 @@ matches; that carve-out is unnecessary); 9e case numbering is self-consistent.
 
 ## Revision log
 
+- **rev 4.1 (2026-07-27):** closes the E/F fix-verification findings on rev 4 (all
+  their round findings confirmed resolved; residuals were in the rev-4 fixes
+  themselves): human-attribution carry-forward keyed on positive evidence (the
+  pure absence test would have scored freshly drafted stubs 100% human — inverting
+  the no-false-confidence guarantee) and made non-ratcheting (wholesale rewrite
+  re-infers the slug); shallow-gate freshness position unified (drafted-this-run
+  topics stamp 100 truthfully at any depth; the 9f-only suppression contradicted the
+  writer-of-record argument); stub test made fence-aware; 12d's ARCHITECTURE-pointer
+  duty scoped to full-management mode; 12b option 1 added to the identity-read
+  allowance; 9e condition 2 widened to cover all three 9d escalation routes (in both
+  §3 and §8); draft-side reset timing sequenced (after Step 9 on the 9b path, with
+  its near-unreachability noted); eval-suite discovery check moved into the wave-3
+  pre-check that gates the relocation; row-count wording fixed.
 - **rev 4 (2026-07-27):** reworked after voting round 2 (fresh voters E and F, both
   NOT_APPROVED; full union applied). Headline changes: 12f hub template body actually
   written (both voters found "discover's template verbatim" describes a one-sentence
