@@ -17,6 +17,7 @@ Handle every error gracefully — warn and continue with defaults, except where 
 4. **Git unavailable entirely** (not a repo, or no git binary) — under `main-only`, refuse; otherwise pass null `default_branch` and skip git-dependent features, warn
 5. **Detached HEAD** — `main-only` refuses; `branch-local` proceeds with `current_branch` = HEAD SHA; `branch-commit` refuses
 6. **No remote OR unresolvable default branch** — no remote at all: probe local `refs/heads/main`, then `refs/heads/master`, and use it if found; only when neither exists fall back to the current branch (skip remote operations, non-fatal); remote exists but unresolved: under `main-only`, refuse and tell the user to set `default_branch`; under other strategies, pass null
+7. **Scan validation** — a non-null `scan` failing the shape/resolution/reachability tests classifies its topic `drifted` with `freshness: 0` persisted; in a shallow clone (a separate condition from #4's git-unavailable case) scan validation and every diff-derived branch are skipped with a single warning and topics classify from body and frontmatter alone.
 
 ## Parse Invocation
 
@@ -123,25 +124,35 @@ After discover completes, tell the user: "Stubs created. Run `/codebase-scribe` 
 
 2. **Prune orphaned inferred_sections** — for each topic, check `inferred_sections` entries against actual `##` headings. Remove entries with no matching heading.
 
-3. **Check docs_dir mismatch** — if `.scribe.yml` `output.docs_dir` doesn't match where topic files exist on disk, warn.
+4. **Scan-SHA validation and freshness persistence** — every non-null `scan` is validated here; `scan: null` is never a validation failure (it is routed by the Step 5 rows).
+
+   **Shallow-clone gate first, covering every stored-SHA consumer and maintain's git-history features:** if `git rev-parse --is-shallow-repository` is true (fallback: `test -f .git/shallow`), skip scan validation, Step 5's classification diff, maintain §1, §2 (no input without §1's churn), §3's rename resolution via `git log --diff-filter=R` (and therefore §9's escalation — broken references are reported, never flagged as deletions, since renames are indistinguishable from deletions in a shallow clone), §4, §5, §8, and the Step 4 session-SHA check; warn once. Topics classify from body and frontmatter alone; no frontmatter is degraded; freshness holds its last value — except topics actually drafted this run, which stamp `freshness: 100` truthfully at any clone depth.
+
+   **Shape:** `^[0-9a-f]{7,40}$` (the README's example `"a1b2c3d4"` stays shape-valid — it would still fail resolution in a real repo, which P5's README alignment notes).
+
+   **Resolution and reachability:** `git cat-file -e <sha>` AND `git merge-base --is-ancestor <sha> HEAD`.
+
+   **On failure:** the topic never classifies `current` — it classifies `drifted` unless a higher-priority row (`stub`, `escalated`) matches, both of which also route to a redraft — and its frontmatter `freshness` is set to `0` here, before any STATUS.md regeneration.
+
+5. **Check docs_dir mismatch** — if `.scribe.yml` `output.docs_dir` doesn't match where topic files exist on disk, warn.
 
 ### Step 4: Check session state
 
-Read `.scribe/session.json`. Discard if: version != `1.0`, branch mismatch, >7 days old, or HEAD >20 commits past `last_active_sha`. If valid, restore `total_files_read` and per-topic `phase_status`.
+Read `.scribe/session.json`. Discard if: version != `1.0`, branch mismatch, >7 days old, HEAD >20 commits past `last_active_sha`, or `last_active_sha` fails the shape/resolution/reachability test from Step 3 (skipped in a shallow clone, per Step 3's gate). If valid, restore `total_files_read` and per-topic `phase_status`.
 
 ### Step 5: Classify topics
 
-For each topic, run `git diff --stat <scan>..HEAD -- <watch_paths>`:
+For each topic, run `git diff --stat <scan>..HEAD -- <watch_paths>` (skipped for null-scan topics — see the `drifted` row):
 
 | Category | Criteria | Priority |
 |----------|----------|----------|
 | `stub` | body is empty or contains a line beginning with the stub placeholder marker (`*Stub — will be populated`) outside fenced code blocks, or has `migration_source` | 1 (highest) |
 | `escalated` | completeness == 0 AND has stale_flag with `reason: "escalated"` (set by maintain skill's Step 9) | 2 |
-| `drifted` | watch_paths changed since scan SHA | 3 |
-| `decision_drift` | has stale_flag with `reason: "decision_drift"` and topic is otherwise current | 4 |
-| `undercooked` | completeness < 30 | 5 |
-| `unverified` | human_input == 0 and freshness >= 40 | 6 |
-| `current` | scores adequate + scan matches HEAD | 7 (lowest) |
+| `drifted` | `scan` is non-null AND (watch_paths changed since scan SHA OR scan validation failed) | 3 |
+| `decision_drift` | has stale_flag with `reason: "decision_drift"` | 4 |
+| `undercooked` | `scan` is null AND body is not a stub | 5 |
+| `unverified` | `human_input == 0` AND `freshness >= 40` AND `question_passes < 2` AND `questions` is not `false` (an absent `question_passes` is treated as `0`; an absent `questions` is treated as `true`) | 6 |
+| `current` | no other row matched | 7 (lowest) |
 
 If a context string was provided, boost priority for topics whose watch_paths or title match the context.
 
@@ -381,7 +392,7 @@ When a topic passes review (or is approved/overridden):
 3. Update `scan` SHA to current HEAD
 4. Update `freshness: 100`
 5. Mark topic as `complete` in session.json
-6. Regenerate `docs/agents/STATUS.md` with updated scores, stale flags, and review notes
+6. Regenerate `docs/agents/STATUS.md` with updated scores (scores sourced from frontmatter), stale flags, and review notes
 
 ### Step 10: Regenerate STATUS.md (fallback)
 

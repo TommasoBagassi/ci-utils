@@ -38,11 +38,17 @@ For each topic that isn't completely current:
 
 ### 1. Scope the Diff
 
-Run: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`
+If `shallow` is true, skip this step entirely — §2 then has no input to act on.
+
+If `scan_sha` fails the shape/resolution/reachability test (`^[0-9a-f]{7,40}$`, `git cat-file -e`, `git merge-base --is-ancestor`), report full churn without running the diff — this feeds §2's drift table its input.
+
+Otherwise, run: `git diff --stat <scan_sha>..HEAD -- <watch_paths>`
 
 Calculate churn: (files changed / total files in watch_paths) x 100
 
 ### 2. Apply Drift Table
+
+Skipped entirely in a shallow clone — §1 provides no churn data to feed it. **Other stored-SHA consumers:** `_meta.<topic>_extracted_at` needs no guard (equality-only; mismatch → re-extract, the safe direction).
 
 | Watch paths changed? | References valid? | Action |
 |---|---|---|
@@ -59,7 +65,8 @@ For each topic file, extract all file path references and function/type name ref
 - **Function names:** Does `grep -r "func <name>" <watch_paths>` find the function?
 
 For broken references:
-- Check `git log --diff-filter=R -- <old_path>` to find if the file was renamed
+- If `shallow` is true, skip the rename check (`git log --diff-filter=R`) — renames are indistinguishable from deletions in a shallow clone. Report the broken reference without a deletion flag (do not assign `reason: "deleted"`); §9's escalation still counts these broken references toward its 60% threshold.
+- Otherwise, check `git log --diff-filter=R -- <old_path>` to find if the file was renamed
 - If renamed: auto-fix the reference in the doc, note the change in your summary
 - If deleted: add a stale flag to frontmatter:
 
@@ -75,6 +82,8 @@ stale_flags:
 Reason categories: `"deleted"` (file/function removed), `"renamed"` (auto-fixed but flagged), `"semantic"` (code behavior changed), `"escalated"` (60%+ broken references, needs full redraft).
 
 ### 4. Decision Drift Detection
+
+Skipped entirely in a shallow clone (per Step 3's gate). If a topic's `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived branch for that topic's claims rather than flagging them.
 
 For claims in `.claims.yml` with `provenance.origin: user`, check whether the claim's `source` file changed since the claim was recorded:
 
@@ -100,6 +109,8 @@ stale_flags:
 Report in the summary: "N decision drift flag(s) raised. These will be addressed in the next draft or focus run."
 
 ### 5. Stale Flag Lifecycle
+
+Skipped entirely in a shallow clone (per Step 3's gate). If a stale flag's `flagged_at_sha` fails the shape/resolution/reachability test, skip its diff-derived branch — leave the flag active without recalculating commit distance.
 
 For existing stale flags in frontmatter:
 - Calculate commit distance: `git rev-list --count <flagged_at_sha>..HEAD`
@@ -155,7 +166,7 @@ Run these on every maintain pass:
 
 For each topic:
 
-**Freshness:** `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100.
+**Freshness:** `git diff --stat <scan_sha>..HEAD -- <watch_paths>`. Freshness = (unchanged files / total files in watch_paths) x 100. In a shallow clone, or when `scan_sha` fails the shape/resolution/reachability test, skip this diff-derived recalculation for the topic; Human Input and Completeness (neither diff-derived) still run.
 
 **Human Input:** (sections NOT in `inferred_sections` / total sections) x 100.
 
@@ -169,7 +180,7 @@ If a section has 60%+ of its referenced files no longer existing, escalate:
 > "Section '[heading]' in [topic].md has 60%+ broken references. This section needs a full redraft. Recommend running `/codebase-scribe` again to regenerate it."
 
 To ensure the orchestrator routes this topic to Phase 2 on the next run:
-1. Set `completeness: 0` in the topic's frontmatter (this triggers the `undercooked` classification in the orchestrator's Step 5)
+1. Set `completeness: 0` in the topic's frontmatter (paired with the stale flag below, this triggers the `escalated` classification in the orchestrator's Step 5)
 2. Add a stale flag with `reason: "escalated"`:
 ```yaml
 stale_flags:
