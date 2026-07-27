@@ -246,9 +246,15 @@ skills never re-detect. Detached HEAD: `main-only` refuses; `branch-local` proce
 with `current_branch` = HEAD SHA; `branch-commit` refuses.
 
 **Error Handling updates:** preamble gains "…except where an entry below explicitly
-refuses the run"; entry #5 rewritten per the strategy split; **entry #6 is named as
-edited** (it now also governs the ladder's no-remote rung); a new entry covers scan
-validation and its shallow-clone interaction with #4.
+refuses the run"; entry #5 rewritten per the strategy split; **entry #6 is rewritten
+to "No remote OR unresolvable default branch"** — covering both the ladder's
+no-remote rung AND rung 4's refusal (remote present, nothing resolves), so a
+refused user finds a documented cause; **entry #4 is noted as edited** (the
+git-unavailable rung); a new entry covers scan validation and its shallow-clone
+interaction with #4. **Recorded user-visible change:** in a non-git directory
+under the default `main-only` strategy the run now refuses rather than degrading —
+the plugin's documented scope is git repositories, and its entire drift model
+needs one.
 
 ### Scan-SHA validation (H6)
 
@@ -402,8 +408,10 @@ classifies `unverified` — that is the question loop working, not a defect).
   return its report verbatim." — so an eval run produces the full report the
   judges score, evaluating the agent indirectly through the dispatch.
   `skills/prompts/review-adversarial.md` is still deleted (merged into the agent).
-  Consequences: no relocation, no convention-doc edits, `/eval-analyze` keeps a
-  SKILL.md input (the stub, whose eval semantics are "dispatch and relay").
+  Consequences: no relocation, no eval-layout convention edits (the agent-`model`
+  checklist clause in `docs/contributing.md` is a separate, recorded edit),
+  `/eval-analyze` keeps a SKILL.md input (the stub, whose eval semantics are
+  "dispatch and relay").
   **Fallback** (pre-check question 3): if the eval runner's environment cannot
   dispatch the agent through the stub and surface its report in the captured
   conversation, the skill instead carries a protocol copy **mechanically derived
@@ -493,7 +501,9 @@ if (3) fails, its branch is the non-destructive derived-copy fallback above.
 - Step 8 verifies/creates the `.scribe/` gitignore entry before writing
   (belt-and-braces with §4's seeding).
 
-**Acceptance:** the review protocol text exists only in the agent;
+**Acceptance:** the review protocol text has one canonical copy, in the agent (the
+derived-copy fallback, if taken, is generated from it and sync-checked, not a
+second source);
 `skills/scribe-review/SKILL.md` is the dispatching stub that relays the agent's
 report verbatim (or the generation-headed derived copy, if pre-check question 3
 failed) and `skills/prompts/` is gone;
@@ -535,8 +545,16 @@ re-flag fix below).
   decision drift. All three Decision Drift Resolution outcomes write frontmatter
   first.
 - `.claims.yml` stays gitignored; README updated to "regenerable".
-- **kiali migration — owner: Phase 0 Step 1, after gitignore seeding; trigger:
-  trackedness only (`git ls-files --error-unmatch`); per-decision idempotent.**
+- **kiali migration — owner: Phase 0 Step 1, after gitignore seeding (both in
+  wave 1); per-decision idempotent. Trigger split in two:** the frontmatter
+  *reconstruction* triggers on the cache file being present with `origin: user`
+  claims — tracked or not, so an untracked-but-present cache still migrates its
+  provenance; only the *untrack* step is additionally gated on trackedness
+  (`git ls-files --error-unmatch`). Evidence status: kiali's `.claims.yml`
+  trackedness comes from the kiali deployment analysis
+  (`kiali/documentation-report.md`) — the same field-data basis as the P7 footer
+  strings, re-verified at implementation time like them; the split trigger makes
+  the migration correct either way.
   **Selection and mapping, explicit:** claims with `provenance.origin: user` only;
   `id`←claim.id, `type`←claim.type, `claim`←claim.claim,
   `context`←provenance.context, `recorded`←provenance.recorded,
@@ -732,8 +750,9 @@ file exists (full-management mode).
 - **P2 batching, shape specified:** one multiSelect AskUserQuestion listing each
   missing/thin standard file as an option, with the per-file classification text
   ("thin, ~N lines" / "missing") carried into that option's description; a second
-  call only when more than four files qualify (the tool's per-question option
-  limit). **Step B's "one at a time, sequentially (do not batch)" clause is
+  call only when more files qualify than fit one question's options (the exact
+  per-question option limit is verified against the host tool schema at
+  implementation time, not asserted here). **Step B's "one at a time, sequentially (do not batch)" clause is
   deleted by the P2 commit; draft §7's identically-worded focus-mode HARD RULE is
   NOT touched.**
 
@@ -781,12 +800,21 @@ self-consistent.
   earliest** (wave-1 Review Gate guard covers the interim).
 - **Waves:**
   1. §2 + §1 + cross-cutting rules (incl. `human_sections`) — kiali-blocking —
-     **plus the kiali claims/provenance migration** (it populates `human_sections`
-     and `decisions:`; shipping the formula cutover without it would recompute
-     kiali's `human_input` to 0 from an empty list and commit the zeros to the
-     only real deployment during the post-wave-3 run window).
-  2. §5 + §4's gitignore seeding + snapshot-deletion site (Step 1) — **so
-     `.scribe/` is ignored before §3's snapshots are ever written**.
+     **plus the coherent §4 bundle the migration depends on, moved as a unit:**
+     the gitignore seeding (the migration's stated predecessor — untracking
+     without ignoring would let `git add -A` re-track the cache), the kiali
+     claims/provenance migration itself (it populates `human_sections` and
+     `decisions:`; shipping the formula cutover without it would commit zeroed
+     `human_input` to the only real deployment during the run window), **the
+     decision-id reservation in draft §11 and maintain §6, and Step 3's
+     extraction of the new keys** (a fresh kiali clone in the run window has no
+     `.claims.yml`; unreserved re-extraction would collide with migrated decision
+     ids and wave-4 re-linking would then bind decisions to the wrong claims).
+     Cross-wave note: maintain §6's content re-*linking* still arrives in wave 4 —
+     inert until then, harmless, since `decisions:` frontmatter is authoritative
+     and the reservation already protects the ids.
+  2. §5 + snapshot-deletion site (Step 1) — **so `.scribe/` snapshot writes in
+     wave 3 find their ignore entry already present (seeded in wave 1)**.
   3. §3 (agent, dispatching-stub reduction, brief contract, M2 reduction,
      snapshots), gated by the **two-question Cursor pre-check** (agent
      dispatchability, identifier form), with question 3 (eval-runner report
@@ -797,7 +825,9 @@ self-consistent.
      passing evals is not mergeable" rule is origin's — on the fork, the agreed
      workflow runs evals manually after PR acceptance (user decision 2026-07-27),
      so the interim is acceptable and recorded.
-  4. §4 remainder (kiali migration moved to wave 1).
+  4. §4 remainder (migration, seeding, id reservation, and key extraction all
+     moved to wave 1; this wave carries the question-pass contract,
+     incorporation rules, re-linking, and `resolved_at`).
   5. §6 (strip, then P2), §7, §8.
   6. **Evals:** regenerate all four suites in place against final contracts
      (scribe-review's suite evaluates the agent **indirectly through the
@@ -831,6 +861,18 @@ self-consistent.
 
 ## Revision log
 
+- **rev 6.1 (2026-07-27):** closes the I/J fix-verification findings on rev 6:
+  the wave-1 kiali bundle made coherent (gitignore seeding, migration,
+  decision-id reservation in both assignment sites, and Step-3 key extraction all
+  move together — the rev-6 move had split the migration from its stated
+  predecessor and from the reservation a fresh clone needs in the run window);
+  migration trigger split (reconstruction on cache presence with `origin: user`
+  claims, tracked or not; only the untrack step trackedness-gated) with the
+  evidence basis recorded; Error Handling #6 rewritten to cover rung 4's
+  refusal; the non-git-directory refusal recorded as a user-visible change;
+  "no convention-doc edits" narrowed to eval-layout; the §3 acceptance's
+  canonical-copy wording made fallback-aware; the AskUserQuestion option limit
+  deferred to implementation-time verification.
 - **rev 6 (2026-07-27):** voting round 4 (I, J) union. `human_sections` wiring
   completed: the Wrap-Up Pass added as the fourth answer-incorporation site (with
   post-§8/§10 recompute), §6/§7 restatements rescoped, BOTH §12 checklist items
