@@ -661,9 +661,16 @@ Open a PR to fork main titled "scribe wave 1: drift integrity, structure contrac
 ```bash
 git add plugins/codebase-scribe/skills/scribe-draft/SKILL.md plugins/codebase-scribe/commands/codebase-scribe.md
 git diff --cached --stat                      # exactly the two files
-# mechanical isolation check: every changed line must mention upstream (case-insensitive)
-git diff --cached -U0 | grep -E '^[+-]' | grep -v '^[+-][+-]' | grep -vi upstream
-# expected: EMPTY output (any surviving line is a non-upstream hunk that must not ride this commit)
+# mechanical isolation check at HUNK granularity (a deleted template block contains
+# blank/structural lines that don't literally say "upstream" — line-level checks false-positive):
+git diff --cached -U0 | awk '
+  /^@@/ { if (h != "" && !u) print "SUSPECT HUNK: " h; h=$0; u=0; next }
+  /^[+-]/ && !/^(\+\+\+|---)/ { if (tolower($0) ~ /upstream/) u=1 }
+  END { if (h != "" && !u) print "SUSPECT HUNK: " h }'
+# expected: EMPTY — every changed hunk mentions upstream somewhere. Residual, stated:
+# a stray non-upstream edit CONTIGUOUS with an upstream deletion shares its hunk and is
+# invisible to this check — the full-diff eyeball below is the backstop for that case.
+git diff --cached   # eyeball in full
 git commit -m "scribe: strip Red Hat upstream.md contextification (revertible; a future revert re-adds upstream as a multiSelect option post-P2)"
 ```
 
