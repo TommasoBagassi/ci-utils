@@ -114,12 +114,15 @@ The plugin never hardcodes `main`. The default branch is detected once per run, 
 by `git remote add`, and is absent in CI checkouts, so its failure must not be treated
 as "no remote":
 
-1. `.scribe.yml` `branching.default_branch`, if set — overrides everything.
+1. `.scribe.yml` `default_branch`, if set — overrides everything. (Flat key,
+   consistent with the existing flat `branching_strategy`; added to the command's
+   Error Handling defaults list — default: auto-detect — and the README config
+   block, alongside §7's `questions`.)
 2. `git symbolic-ref refs/remotes/origin/HEAD` (strip the `refs/remotes/origin/`
    prefix).
 3. Probe `git rev-parse --verify origin/main`, then `origin/master`.
 4. If a remote exists but none of the above resolves: under `main-only`, **refuse the
-   run** and tell the user to set `branching.default_branch` — never fall back to the
+   run** and tell the user to set `default_branch` — never fall back to the
    current branch, which would compare the branch against itself and pass the gate on
    exactly the feature-branch runs it exists to block.
 5. Only when no remote exists at all (Error Handling #6): fall back to the current
@@ -166,9 +169,15 @@ their diff-based branches.
   identified it as write-only state with no consumer.
 - **One-time repair (required for kiali):** every deployed repo drafted by the current
   plugin already has file-level watch_paths written by the old §9. At Step 3, any
-  watch_paths entry that is a file path (has an extension / is not a directory) is
-  replaced by its parent directory, deduplicated, and written back to frontmatter.
-  Without this, the forward-only rule leaves kiali's drift detection crippled.
+  watch_paths entry that is a file **in a subdirectory** is replaced by its parent
+  directory, deduplicated, and written back to frontmatter. **Entries that are files
+  at the repo root (`Makefile`, `Dockerfile`, …) are preserved as-is** — Step 2b
+  legitimately allows files in discovery-approved watch_paths, their parent is the
+  repo root, and widening them to `.` would make the topic drift on every commit and
+  redraft perpetually via the `drifted` row. File entries are valid git diff scopes,
+  so preserving them costs nothing. Discovery-time file entries are intentional and
+  never repaired; the repair targets only the old draft-§9 narrowing artifacts.
+  Without this repair, the forward-only rule leaves kiali's drift detection crippled.
 - **Classification consequence (deliberate change):** widening watch_paths enlarges
   the completeness denominator (referenced depth-1 subdirs / total subdirs), so scores
   drop. Under the current rules that would mass-classify topics as `undercooked`
@@ -247,6 +256,12 @@ redrafted.
   sub-skills — do NOT spawn a general-purpose `Agent`…", scoped explicitly to the
   draft and maintain skills (which remain skills) so it no longer reads as
   contradicting the review dispatch.
+- **M2 mapping, stated explicitly:** M2 (internal duplication) is satisfied by the
+  protocol merge above — the two divergent review-protocol copies become one agent
+  prompt. Rev 1 additionally specified shrinking draft's and maintain's Review Gate
+  sections; inspection showed those sections already only *point* at Step 9 without
+  restating substeps, so that portion is deliberately dropped — the only edit they
+  need is the dispatch-wording change (site list above).
 - **Recommendation lines (P3):** the referenced slash commands
   (`/codebase-scribe:scribe-maintain`, `:scribe-draft`) do not exist. The maintain-vs-
   redraft signal is kept, the fake commands are not: "Run `/codebase-scribe` again —
@@ -326,6 +341,11 @@ scribe:
     re-linking and by decision-drift detection.
 - Decision drift detection (maintain §4) reads the frontmatter `decisions:` list
   (`status: active` only) — no longer dependent on `.claims.yml` surviving.
+- **Residual, accepted:** re-extraction is an LLM operation, so a reworded claim can
+  fail the first-50-chars match and drop the provenance link. This fails *safe* —
+  provenance is lost, never grafted onto the wrong claim (the failure mode id-matching
+  had). Maintain reports any `active` decision that found no matching claim on a
+  re-link pass, so the user can re-link or retire it.
 - `.claims.yml` stays gitignored (multi-machine workflow keeps caches local — user
   decision 2026-07-27). README wording updated: the file is now truthfully
   regenerable.
@@ -433,7 +453,10 @@ Step 3 extracts the two new fields.
 
 **Acceptance:** a seed run with custom `output.docs_dir` puts stubs and STATUS.md
 there, and the subsequent draft/maintain runs read topics, write claims, and
-regenerate STATUS.md in that same directory with no mismatch warning; a fresh seed run
+regenerate STATUS.md in that same directory with no mismatch warning (the threading
+enumeration above is illustrative — the catch-all sentence is authoritative, and also
+covers draft's ARCHITECTURE.md generation links, discover's HARD RULE 2 path
+constraint, and the merged review agent's cross-topic check); a fresh seed run
 leaves an AGENTS.md on disk (created by Step 12 during that run); deleting AGENTS.md
 while keeping the docs dir routes through Step 12, not a Step 1 template; grep finds
 no "discover skill's hub template" reference anywhere; a hub whose only section is
@@ -456,9 +479,11 @@ the legacy stubs-footer and no remaining stubs has exactly that line removed.
   origin-bound revert therefore re-adds upstream as one more multiSelect option, and
   the revert note in the commit message says so.
 - **Eval fixtures:** `skills/scribe-draft/eval/cases/case-004-operator-audience/`
-  contains upstream references. Eval fixtures are regenerated wholesale in wave 6; the
-  strip's acceptance criterion is scoped to behavioral files (command, skills, hooks,
-  README) until then.
+  matches an `upstream` grep, but those hits are a reverse-proxy fixture's
+  `UPSTREAM_URL` env var and "upstream pool" prose — unrelated to `docs/upstream.md`,
+  legitimate for that fixture, and not removed by wave 6 regeneration. The strip's
+  acceptance criterion is therefore **permanently** scoped to behavioral files
+  (command, skills, hooks, README); eval fixtures are excluded from the upstream grep.
 - **Keep:** README.md / CONTRIBUTING.md / ARCHITECTURE.md handling and the CLAUDE.md /
   GEMINI.md redirect stubs.
 - **Prompt batching (P2, after the strip):** the remaining per-file sequential yes/no
@@ -582,6 +607,18 @@ self-consistent (no reference to a case number that no longer exists).
 
 ## Revision log
 
+- **rev 2.2 (2026-07-27):** fixes for reviewer A's fix-verification findings (its two
+  overlaps with reviewer B's were already fixed in rev 2.1): watch-path repair
+  preserves root-level file entries instead of widening them to `.` (which would have
+  made build/deploy-style topics drift and redraft on every commit);
+  `default_branch` made a flat key and added to the defaults list + README config
+  block; M2's mapping to the protocol merge stated explicitly (the Review Gate
+  substep-dedup portion deliberately dropped — those sections already only point at
+  Step 9); §6's eval-fixture caveat corrected (case-004's upstream hits are
+  reverse-proxy content, permanently excluded from the strip grep, not "until wave
+  6"); docs_dir threading enumeration marked illustrative with the catch-all
+  authoritative; content-based re-link residual acknowledged (reworded claims drop
+  provenance fail-safe; maintain reports unmatched active decisions).
 - **rev 2.1 (2026-07-27):** fixes for the three defects reviewer B's fix-verification
   found in rev 2 itself: default-branch detection made fail-closed (probe
   `origin/main`/`origin/master` after `symbolic-ref`; with a remote present but
