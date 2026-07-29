@@ -15,7 +15,7 @@ execution:
     change_summary: {{ input.change_summary }}
     claims: {{ input.claims }}
     topic_content: |
-      {{ input.topic_content | indent(6) }}
+      {{ input.topic_content | indent(2) }}
   timeout: 900
   max_budget_usd: 3.0
 

@@ -115,7 +115,7 @@ Watch specifically for these — they are the most frequent errors in AI-generat
 
 ## Report Format
 
-**You MUST produce your report in this exact format.** The orchestrator parses the `## Verdict:` line programmatically.
+**You MUST produce your report in this exact format, and output nothing else** — your report begins at `## Review Summary` and ends after the Recommendation line; no title above it, no renamed or restructured headings, no closing remarks. The orchestrator parses the `## Verdict:` line programmatically, and downstream checks match the section headings literally.
 
 ```markdown
 ## Review Summary
