@@ -1,0 +1,8 @@
+expected_docs_dir: docs/agents
+expected_created:
+  - backend-architecture
+  - data-access
+  - build-deploy
+expected_collisions: []
+forbidden_leakage_strings:
+  - GalacticOrderProcessor
