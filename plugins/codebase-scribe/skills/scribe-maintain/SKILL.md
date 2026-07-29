@@ -164,4 +164,4 @@ Report in the §13 summary: checked / auto-fixed / flagged.
 
 ### 13. Summary
 
-Print: topics checked; mechanical fixes applied; major drift flags; decision drift flags; decision provenance (unmatched active decisions / ambiguous re-link matches); stale flags demoted; contradictions; quality issues; standard files (auto-fixes / flags / missing); review results per topic; suggested next action.
+Print every line below, every run — write `none` for an empty list rather than omitting the line (downstream tooling reads these entries by name): topics checked; mechanical fixes applied; major drift flags; decision drift flags; decision provenance (unmatched active decisions / ambiguous re-link matches); stale flags demoted; contradictions; quality issues; standard files (auto-fixes / flags / missing); review results per topic; suggested next action.

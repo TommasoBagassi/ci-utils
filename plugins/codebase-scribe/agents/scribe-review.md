@@ -154,7 +154,7 @@ Watch specifically for these — they are the most frequent errors in AI-generat
 <exactly one line, selected per the Recommendation rules below>
 ```
 
-**Recommendation rules** — under the `## Recommendation` heading write exactly one of these lines, and only one, based on the verdict and the severity of findings:
+**Recommendation rules** — under the `## Recommendation` heading write exactly one of these lines, and only one, copied character-for-character (the em dash `—` included; never an ASCII `--`), based on the verdict and the severity of findings:
 
 - **No action needed — the documentation is up to date.** (if PASS or PASS_WITH_ANNOTATIONS)
 - **Run `/codebase-scribe` again — targeted correction of sections: <list>.** (if REWORK_NEEDED with targeted stale sections that can be patched in place)

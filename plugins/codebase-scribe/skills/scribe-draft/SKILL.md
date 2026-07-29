@@ -233,6 +233,8 @@ If `review.enabled: false` **and this is a full draft — never a question pass*
 
 Immediately after writing each topic file, extract factual claims (up to 15–20, proportional) while the content is fresh — never deferred.
 
+**The file is created, not assumed:** if `.claims.yml` does not exist yet in docs_dir, create it — extraction is never conditional on the file already existing; the first drafted topic in a repo creates it.
+
 **Claim IDs:** `<topic-slug>-<N>`, incrementing forever — never reuse a retired ID. **ID stability:** read existing `.claims.yml` first; match by exact `{type, topic}` + first 50 chars of claim text; matched claims keep their ID. New claims get the next sequential ID, skipping `_retired_ids` for that topic AND every id in that topic's frontmatter `decisions:` (active and retired). Existing claims without an `id` get one on first read.
 
 Types (only these five): `technology`, `pattern`, `data_flow`, `boundary`, `constraint`.
