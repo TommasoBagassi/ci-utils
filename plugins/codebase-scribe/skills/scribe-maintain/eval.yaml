@@ -50,7 +50,10 @@ dataset:
   path: eval/cases
   workspace:
     files:
-      - src
+      # Lifted to the workspace root: watch_paths and the topic files' own
+      # references name these at the repo root, so under src/ drift detection
+      # would see every referenced path as deleted.
+      - {src: src, dest: ""}
       - docs
       - .scribe.yml
       - diff.txt

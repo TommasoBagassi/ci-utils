@@ -47,7 +47,10 @@ dataset:
     # the brief; without this only input.yaml reached the workspace and there
     # was nothing to read.
     files:
-      - src
+      # Lifted to the workspace root: source_files, claims and topic_content all
+      # reference these at the repo root, and under src/ the agent reported the
+      # mismatch as a documentation error.
+      - {src: src, dest: ""}
   schema: |
     Each case directory contains:
     - input.yaml: the Step 9c brief, passed to the scribe-review SKILL exactly

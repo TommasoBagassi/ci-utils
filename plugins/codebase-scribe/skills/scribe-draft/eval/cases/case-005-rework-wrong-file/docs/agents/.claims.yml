@@ -1,12 +1,12 @@
 _meta:
-  cache-layer_extracted_at: "4444dddd5555eeee6666ffff7777aaaa8888bbbb"
+  cache-layer_extracted_at: "04dc648e70e677eea3c83e27f59c2d24e154b930"
 
 claims:
   - id: cache-layer-1
     type: pattern
     topic: cache-layer
-    claim: "Cache is populated by informers in NewKubeCache in cache/kube_cache.go"
-    source: "cache/kube_cache.go"
+    claim: "Cache is populated by informers in NewKubeCache in cache/informer_cache.go"
+    source: "cache/informer_cache.go"
     provenance:
       origin: inferred
 

@@ -54,7 +54,11 @@ dataset:
     # the skill — every judge that turns on their presence passes vacuously.
     # Entries absent from a given case are skipped.
     files:
-      - src
+      # src/ is a container in the case directory, not part of the repo path:
+      # briefs, docs and watch_paths reference these files at the root, so the
+      # tree is lifted there. Left under src/ the referenced paths do not exist
+      # and a skill checking them correctly reports them as missing.
+      - {src: src, dest: ""}
       - AGENTS.md
       - docs
   schema: |

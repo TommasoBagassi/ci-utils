@@ -55,7 +55,9 @@ dataset:
   path: eval/cases
   workspace:
     files:
-      - src
+      # Lifted to the workspace root: watch_paths name these at the repo root,
+      # so under src/ the drafted content would cite paths that do not exist.
+      - {src: src, dest: ""}
       - docs
       - .scribe.yml
   schema: |

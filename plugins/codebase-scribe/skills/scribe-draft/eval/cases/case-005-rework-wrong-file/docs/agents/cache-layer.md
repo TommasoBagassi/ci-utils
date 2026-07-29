@@ -1,7 +1,7 @@
 ---
 scribe:
-  scan: "4444dddd5555eeee6666ffff7777aaaa8888bbbb"
-  freshness: 40
+  scan: "04dc648e70e677eea3c83e27f59c2d24e154b930"
+  freshness: 100
   human_input: 25
   completeness: 50
   inferred_sections:
@@ -42,7 +42,7 @@ the API server on every reconcile loop.
 ## Cache Population
 
 The cache is populated by informers in `NewKubeCache` in
-`cache/kube_cache.go`. Informers watch the relevant object types and push
+`cache/informer_cache.go`. Informers watch the relevant object types and push
 updates into the cache as they arrive.
 
 ## Configuration
