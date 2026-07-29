@@ -1,26 +1,12 @@
 #!/bin/bash
 # Four-way version sync check for the codebase-scribe plugin: both plugin.json
 # manifests and both marketplace.json entries for "codebase-scribe" must declare
-# the identical version string. Exits 0 only when all four manifests are present,
-# parseable, and agree; exits non-zero otherwise, always printing a cause
-# (missing, unreadable, or mismatched).
+# the identical version string. Exits 0 only when all four are present, parse,
+# and agree; otherwise exits non-zero after printing the cause.
 #
-# The manifests are parsed with Python's `json` module — a real JSON parser, so
-# layout is irrelevant: pretty-printed or compact, nested sub-objects inline or
-# in block form, braces sharing lines with content, keys in any order. This
-# replaces an earlier grep/sed extractor that bounded entries by line shape and
-# was wrong three times over (unbounded forward scan, then brace-alone-line
-# bounding, then inline nested objects); line-oriented tools cannot bound a JSON
-# value, and no further guard on them would have fixed that. Python is required:
-# if no interpreter is found, or a file does not parse, or the codebase-scribe
-# entry (or its version key) is absent, the script exits non-zero with the
-# reason — it never falls back to guessing and never silently succeeds.
-#
-# Layout assumption: this script assumes the monorepo layout (a plugin.json
-# under plugins/codebase-scribe/, plus root marketplace.json files three
-# directories up). Run against a standalone plugin install without the
-# marketplace root, the two marketplace.json checks will report MISSING — that
-# is expected for this maintainer tool, not a bug.
+# Layout assumption: the monorepo (plugin.json under plugins/codebase-scribe/,
+# marketplace.json files three directories up). Against a standalone plugin
+# install the two marketplace checks report MISSING, which is expected here.
 set -u
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -31,17 +17,9 @@ cursor_plugin_json="$repo_root/plugins/codebase-scribe/.cursor-plugin/plugin.jso
 claude_marketplace="$repo_root/.claude-plugin/marketplace.json"
 cursor_marketplace="$repo_root/.cursor-plugin/marketplace.json"
 
-# A version must be three dot-separated numeric fields end to end, with an
-# optional SemVer pre-release and/or build-metadata suffix — the parser returns
-# whatever string the manifest holds, so this catches a value that is
-# well-formed JSON but not a version (e.g. "" or "latest"). The expression is
-# anchored at BOTH ends on purpose: with only a leading anchor, any string
-# merely starting with three numeric fields passed, so all four manifests could
-# agree on "1.3.0garbage" and the check would report a valid release. The
-# suffixes spell out "non-empty identifier, then dot-separated more of the same"
-# rather than putting "." inside one character class: the class form made the
-# dot an ordinary suffix character, so "1.3.0-." and "1.3.0+." — a suffix marker
-# and no identifier at all — were accepted as versions.
+# Anchored at BOTH ends: a leading anchor alone accepts "1.3.0garbage".
+# The suffixes spell out dot-separated identifiers rather than putting "." in a
+# character class, which would accept "1.3.0-." and "1.3.0+.".
 version_shape='^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?(\+[0-9A-Za-z-]+(\.[0-9A-Za-z-]+)*)?$'
 
 python_bin=""
@@ -59,10 +37,7 @@ if [ -z "$python_bin" ]; then
   exit 1
 fi
 
-# Reads one version string from a manifest and prints it on stdout. Prints the
-# reason on stderr and exits non-zero when the file does not parse, the
-# codebase-scribe entry is absent or duplicated, or the version key is missing
-# or not a string. $1 = "plugin" | "marketplace", $2 = path.
+# $1 = "plugin" | "marketplace", $2 = path.
 read_version='
 import json, sys
 
@@ -72,12 +47,8 @@ def fail(msg):
     sys.stderr.write(msg + "\n")
     raise SystemExit(1)
 
-# json.load keeps the LAST of a set of duplicate keys and says nothing, so a
-# manifest carrying two "version" fields reads as unambiguous here while another
-# JSON consumer may take the first or reject the file outright. This script
-# already refuses two marketplace entries named codebase-scribe as ambiguous;
-# duplicate keys are the same ambiguity one level down, so they are refused too,
-# at every object level rather than only the top.
+# json.load silently keeps the LAST of a set of duplicate keys while another
+# consumer may take the first or reject the file, so a duplicate is ambiguous.
 def reject_duplicate_keys(pairs):
     seen = set()
     for key, _ in pairs:
@@ -126,10 +97,8 @@ version_from_marketplace() {
 
 status=0
 incomplete=0
-# Initialized to empty rather than merely declared: under `set -u`, `declare -a
-# v` leaves v unbound, so "${#versions[@]}" below aborts with "unbound variable"
-# on the all-four-unreadable path — which the anchored version_shape above makes
-# reachable for the first time.
+# Initialized, not merely declared: under `set -u` a bare `declare -a v` leaves
+# v unbound, so "${#versions[@]}" aborts on the all-four-unreadable path.
 declare -a labels=() versions=()
 
 check() {
@@ -159,9 +128,8 @@ check "plugin.json (Cursor)" "$cursor_plugin_json" version_from_plugin_json
 check "marketplace.json (Claude Code)" "$claude_marketplace" version_from_marketplace
 check "marketplace.json (Cursor)" "$cursor_marketplace" version_from_marketplace
 
-# Compare whatever versions WERE successfully extracted, regardless of whether
-# another manifest was missing/unreadable — a missing file should not suppress
-# learning whether the rest agree.
+# Compare whatever was extracted: a missing manifest must not suppress learning
+# whether the rest agree.
 mismatch=0
 if [ "${#versions[@]}" -gt 0 ]; then
   first="${versions[0]}"
