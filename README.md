@@ -287,7 +287,9 @@ plugins/
     │   ├── doc-validate.sh
     │   └── test-doc-validate.sh # Harness for doc-validate.sh
     ├── scripts/
-    │   └── check-sync.sh       # Verifies both plugin.json manifests and both marketplace.json entries declare the same version
+    │   ├── check-sync.sh       # Verifies both plugin.json manifests and both marketplace.json entries declare the same version
+    │   ├── scribe-lib.py       # Canonical deterministic operations (sections, scores, scan validation, review classification)
+    │   └── test-scribe-lib.sh  # Harness for scribe-lib.py
     └── skills/
         ├── scribe-discover/    # Stub creator for approved topics
         ├── scribe-draft/       # Source code reader and content generator
