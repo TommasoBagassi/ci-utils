@@ -4,7 +4,9 @@
 # the definition of record: prompts reference it instead of restating the rules,
 # so it must stay complete and exact.
 import argparse
+import codecs
 import difflib
+import json
 import math
 import os
 import re
@@ -320,6 +322,241 @@ no PATH at all is an error and exits 3.
 """
 
 
+FM_RULES = """\
+STATE-WRITER RULES (every fm and claims verb)
+
+  These subcommands rewrite files, and they need PyYAML. Without it they write
+  nothing and exit 3.
+
+  Frontmatter: a topic file opens with a line that is exactly "---", carries a
+  YAML block, closes with another "---", and everything after that closing line
+  is the body. All scribe state lives under the top-level "scribe:" mapping. A
+  writer loads the whole frontmatter, changes only the keys its own description
+  names inside "scribe:", and re-emits the whole mapping, so every other key --
+  inside "scribe:" and beside it -- survives. This is the preservation clause,
+  and it is the reason these verbs exist.
+
+  A file with no frontmatter gains one holding only the keys the verb writes.
+  These are errors, and each leaves the file exactly as it was and exits 3: a
+  frontmatter block that is opened and never closed, frontmatter that is not
+  valid YAML, frontmatter that is not a mapping, and a "scribe:" value that is
+  not a mapping.
+
+  YAML COMMENTS INSIDE FRONTMATTER DO NOT SURVIVE A WRITER CALL. Neither does
+  quoting style, key indentation or blank-line placement: the frontmatter is
+  re-emitted by the YAML dumper in block style with the key order it was read
+  in, and non-ASCII characters are written as themselves. Only the body is
+  preserved, and it is preserved byte for byte.
+
+  Encoding: input is read as UTF-8 with a leading byte-order mark tolerated;
+  the mark is NOT written back. Line endings are detected from the bytes read
+  -- a file containing a CRLF is rewritten with CRLF throughout its
+  frontmatter, any other file with LF -- and the body keeps whatever endings it
+  already had.
+
+  Claims file: a YAML mapping whose "claims:" key holds a list of
+  {id, type, topic, claim, source, provenance{origin[,context,recorded]}}
+  entries, alongside the optional "_retired_ids:" list, "_meta:" mapping and
+  "contradictions:" list. It is loaded and re-emitted under the same rules; it
+  has no body.
+
+  Two-file verbs (retire-decision, refresh-decision) validate both files and
+  resolve the named id before writing either, so a failure never leaves the
+  topic file and the claims file disagreeing.
+
+EXIT CODES
+
+  0  success
+  3  operational error: a file is missing or unreadable, PyYAML is missing, the
+     YAML is malformed, an argument does not parse, or a named id is absent.
+     The reason is written to stderr, nothing is written to stdout, and no file
+     is modified.
+"""
+
+FM_HELP = """\
+Read and write the "scribe:" frontmatter mapping of a topic file.
+
+Each verb is one enforced state write: it names the keys it touches, leaves
+every other key alone, and prints what it wrote. See "scribe-lib.py fm VERB
+--help" for the verb's definition.
+"""
+
+CLAIMS_HELP = """\
+Read and write a .claims.yml file.
+
+Each verb is one enforced state write. See "scribe-lib.py claims VERB --help"
+for the verb's definition.
+"""
+
+FM_READ_HELP = """\
+Print FILE's "scribe:" mapping as one line of compact JSON with sorted keys.
+
+A file with no frontmatter, frontmatter without a "scribe:" key, and a
+"scribe:" key with an empty value all print "{}". FILE is not modified.
+"""
+
+FM_UPDATE_HELP = """\
+Merge --json into FILE's "scribe:" mapping, then remove the --unset keys.
+Prints the resulting mapping as compact JSON with sorted keys.
+
+--json takes one JSON OBJECT. Each of its top-level keys replaces the key of
+that name inside "scribe:" WHOLESALE -- a mapping or list value is not merged
+element-wise -- and creates it when absent. Keys the object does not name are
+untouched, which is the preservation clause.
+
+--unset takes one comma-separated list of key names, applied after the merge,
+so naming a key in both writes it and then removes it. Surrounding whitespace
+is stripped from each name and empty names are discarded. Removing a key that
+is not there is not an error.
+"""
+
+FM_STAMP_HELP = """\
+Set scribe.scan to SHA and scribe.freshness to N, and print them back as
+compact JSON with sorted keys.
+
+SHA is written verbatim: this verb does not validate it (see "scribe-lib.py
+validate-sha --help") and never invents one. N must parse as an integer.
+"""
+
+FM_CREDIT_SECTION_HELP = """\
+Credit SLUG to the SME and recompute the human-input score. Prints compact
+JSON with sorted keys: the resulting human_sections list and human_input.
+
+Three keys are written, in one call, because doing them separately is what
+drops steps:
+
+  * scribe.human_sections gains SLUG. The list has set semantics with the
+    existing order preserved and the new value appended, so crediting the same
+    slug twice cannot inflate the score.
+  * scribe.inferred_sections loses every entry whose "id" equals SLUG. Entries
+    are compared by whole id, so a subsection entry ("patterns--conventions/
+    error-handling") is never removed by crediting its parent -- only the
+    top-level entry goes. A plain string entry is compared as itself. The key
+    is only written when FILE already had it: crediting a section never
+    introduces an empty inferred_sections.
+  * scribe.human_input is recomputed from the CURRENT body as
+    round( (matched / total) * 100 ), where "total" is the number of
+    fence-aware "##" headings and "matched" is the number of DISTINCT
+    human_sections values equal to one of their slugs. A credited slug with no
+    matching heading contributes nothing and is not an error. Zero sections
+    scores 0. Rounding is half-up.
+
+SLUG is a slug, not heading text -- see "scribe-lib.py slug --help".
+"""
+
+FM_QUESTION_PASS_HELP = """\
+Add one to scribe.question_passes and print the new value.
+
+An absent counter, and a "question_passes:" key with an empty value, both count
+as 0, so the first call prints 1. A counter that is not an integer is an error.
+"""
+
+FM_SETTLE_HELP = """\
+Apply the settling rule to scribe.question_passes. Prints exactly one word:
+
+    settled   question_passes is 2 AND human_input is 0. The topic has been
+              asked twice with nothing to show for it, so the counter stays
+              where it is and FILE is not modified at all.
+    reset     anything else. question_passes is set to 0.
+
+Both values are read from "scribe:", and an absent value -- or one with an
+empty value -- counts as 0 for both. A value that is not an integer is an
+error.
+"""
+
+FM_RETIRE_DECISION_HELP = """\
+Retire decision ID across FILE and the claims file. Prints compact JSON with
+sorted keys: {claim_removed, id, resolved_at, status}.
+
+In FILE, the entry in scribe.decisions whose "id" equals ID gets
+"status: retired" -- a tombstone, which is why no path deletes the entry. ID
+having no entry is an error.
+
+--resolved-at SHA additionally writes "resolved_at: SHA" on that entry. Without
+the option no resolved_at is written and none is invented; the reported value
+is then null.
+
+In the claims file at PATH, which must exist:
+
+  * the claim whose "id" equals ID is removed from "claims:" if it is there.
+    claim_removed reports whether it was.
+  * ID is appended to "_retired_ids", which is created when absent. The list
+    has set semantics, so retiring twice does not duplicate the entry. The ID
+    stays reserved forever, which is what stops it being handed out again.
+
+Nothing else in either file is touched.
+"""
+
+FM_REFRESH_DECISION_HELP = """\
+Refresh decision ID across FILE and the claims file. Prints compact JSON with
+sorted keys: {claim_updated, context, id, recorded, resolved_at}.
+
+In FILE, the entry in scribe.decisions whose "id" equals ID gets
+"recorded: DATE", plus "context: TEXT" with --context and
+"resolved_at: SHA" with --resolved-at. Each optional value is written only when
+its option is given, and none is invented; an option not given is reported
+null. ID having no entry is an error, and so is an entry carrying
+"status: retired" -- retired entries are never updated.
+
+In the claims file at PATH, which must exist, the claim whose "id" equals ID
+gets "recorded" -- and "context" with --context -- written inside its
+"provenance" mapping, which is created when the claim has none. A claims file
+with no such claim is not an error: claim_updated reports false, and the
+frontmatter write still happens.
+
+Nothing else in either file is touched.
+"""
+
+FM_REMOVE_STALE_FLAG_HELP = """\
+Remove every entry whose "id" equals ID from scribe.stale_flags and print how
+many were removed.
+
+An absent stale_flags list, and an ID matching nothing, both print 0. FILE is
+rewritten only when the count is non-zero, so a no-op call cannot reformat the
+frontmatter.
+"""
+
+CLAIMS_ADD_HELP = """\
+Add claims for topic T to the claims file, reusing the id of any claim already
+there. Prints compact JSON with sorted keys: {added, matched}, each a list of
+ids in the order the input gave them.
+
+The file is CREATED when it does not exist -- extraction is never conditional
+on it already existing.
+
+--json takes one JSON ARRAY of objects. Each object carries "type", "claim",
+"source" and optionally "provenance"; an object carrying an "id" is an error,
+because assigning ids is this verb's job and honouring an incoming one would
+corrupt the sequence. "type" and "claim" are required. Any other key is copied
+through, and "topic" is always set to T whatever the object says.
+
+Each object is then either matched or added:
+
+  * MATCHED when an existing claim has the same "type", has topic T, and its
+    claim text agrees on the FIRST 50 CHARACTERS. The existing entry keeps its
+    id and is not otherwise modified -- no field is overwritten, which is what
+    makes re-extraction idempotent.
+  * ADDED otherwise, with the id "<T>-<N>". N starts above every number already
+    spoken for by topic T: the suffix of every existing claim of that topic,
+    of every id in "_retired_ids", and of every id passed to --reserved
+    (a comma-separated list -- pass the topic's frontmatter decision ids there,
+    active and retired alike). Numbering never goes backwards and a retired id
+    is never reused. Within one call each added claim reserves its own number,
+    so ids stay consecutive.
+
+Ids for other topics, and ids that do not end in "-<digits>", reserve nothing.
+"""
+
+CLAIMS_SET_META_HELP = """\
+Set "_meta.<T>_extracted_at" to SHA in the claims file, which must exist, and
+print the key that was written.
+
+"_meta" is created when absent. No other key under it is touched, so recording
+one topic's extraction point never disturbs another's. SHA is written verbatim
+and is not validated.
+"""
+
+
 def die(message) -> "typing.NoReturn":
     sys.stderr.write("scribe-lib: %s\n" % message)
     raise SystemExit(3)
@@ -356,8 +593,12 @@ def body_lines(lines):
 # themselves as well as for their contents, which is what makes a marker
 # invisible to heading detection while still counting as body content.
 def scan_body(lines):
+    return scan_fenced(body_lines(lines))
+
+
+def scan_fenced(lines):
     fence = None
-    for line in body_lines(lines):
+    for line in lines:
         if line.startswith("```") or line.startswith("~~~"):
             mark = line[:3]
             if fence is None:
@@ -375,9 +616,13 @@ def slug(text):
 
 
 def headings(lines):
+    return fenced_headings(scan_body(lines))
+
+
+def fenced_headings(scanned):
     found = []
     parent = None
-    for line, fenced in scan_body(lines):
+    for line, fenced in scanned:
         if fenced:
             continue
         match = HEADING_RE.match(line)
@@ -624,6 +869,388 @@ def _repair_watch_path(value):
     return value
 
 
+# Imported here rather than at module scope so the read-only subcommands keep
+# working on an interpreter without PyYAML.
+def require_yaml():
+    try:
+        import yaml
+    except ImportError:
+        die("PyYAML is required for state-writer subcommands (pip install pyyaml)")
+    return yaml
+
+
+def strip_cr(line):
+    return line[:-1] if line.endswith("\r") else line
+
+
+def read_text(path):
+    try:
+        with open(path, "rb") as handle:
+            raw = handle.read()
+    except OSError as exc:
+        die(str(exc))
+    if raw.startswith(codecs.BOM_UTF8):
+        raw = raw[len(codecs.BOM_UTF8):]
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        die("%s: %s" % (path, exc))
+    return text, "\r\n" if "\r\n" in text else "\n"
+
+
+def write_text(path, text):
+    try:
+        with open(path, "wb") as handle:
+            handle.write(text.encode("utf-8"))
+    except OSError as exc:
+        die(str(exc))
+
+
+def parse_yaml(text, what):
+    yaml = require_yaml()
+    try:
+        data = yaml.safe_load(text)
+    except yaml.YAMLError as exc:
+        die("%s is not valid YAML: %s" % (what, str(exc).replace("\n", " ")))
+    if data is None:
+        return {}
+    if not isinstance(data, dict):
+        die("%s is not a YAML mapping" % what)
+    return data
+
+
+def dump_yaml(data):
+    return require_yaml().safe_dump(
+        data,
+        sort_keys=False,
+        allow_unicode=True,
+        default_flow_style=False,
+    )
+
+
+# The body is returned as a raw slice of the decoded file, carriage returns and
+# all, so re-emitting it cannot perturb a byte the verb did not mean to touch.
+def load_topic(path):
+    require_yaml()
+    text, newline = read_text(path)
+    pieces = text.split("\n")
+    if not pieces or strip_cr(pieces[0]) != "---":
+        return {}, text, newline
+    for index in range(1, len(pieces)):
+        if strip_cr(pieces[index]) == "---":
+            block = "\n".join(strip_cr(piece) for piece in pieces[1:index])
+            return parse_yaml(block, "frontmatter"), "\n".join(pieces[index + 1:]), newline
+    die("%s: frontmatter block is opened and never closed" % path)
+
+
+def save_topic(path, data, body, newline):
+    front = "---\n" + dump_yaml(data) + "---\n"
+    write_text(path, front.replace("\n", newline) + body)
+
+
+def load_yaml_file(path):
+    if not os.path.exists(path):
+        die("%s: no such file" % path)
+    text, newline = read_text(path)
+    return parse_yaml(text, path), newline
+
+
+def save_yaml_file(path, data, newline):
+    write_text(path, dump_yaml(data).replace("\n", newline))
+
+
+def scribe_slot(data):
+    value = data.get("scribe")
+    if value is None:
+        value = {}
+        data["scribe"] = value
+    elif not isinstance(value, dict):
+        die('frontmatter key "scribe" is not a mapping')
+    return value
+
+
+def as_list(container, key, what):
+    value = container.get(key)
+    if value is None:
+        return []
+    if not isinstance(value, list):
+        die("%s is not a list" % what)
+    return value
+
+
+def as_int(value, what):
+    if value is None:
+        return 0
+    if isinstance(value, bool) or not isinstance(value, int):
+        die("%s is not an integer" % what)
+    return value
+
+
+def entry_id(entry):
+    return entry.get("id") if isinstance(entry, dict) else entry
+
+
+def as_json(value):
+    return json.dumps(value, sort_keys=True, separators=(",", ":"), default=str)
+
+
+def parse_json_arg(text, kind, what):
+    try:
+        value = json.loads(text)
+    except ValueError as exc:
+        die("--json does not parse: %s" % exc)
+    if not isinstance(value, kind):
+        die("--json must be a JSON %s" % what)
+    return value
+
+
+def csv_values(text):
+    if not text:
+        return []
+    return [value for value in (item.strip() for item in text.split(",")) if value]
+
+
+def body_sections(body):
+    lines = body.split("\n")
+    if lines and lines[-1] == "":
+        lines.pop()
+    scanned = scan_fenced(strip_cr(line) for line in lines)
+    return [h for h in fenced_headings(scanned) if h[0] == 2]
+
+
+def find_decision(scribe, ident):
+    for entry in as_list(scribe, "decisions", "scribe.decisions"):
+        if isinstance(entry, dict) and entry.get("id") == ident:
+            return entry
+    die('no scribe.decisions entry with id "%s"' % ident)
+
+
+def cmd_fm_read(args):
+    data, _body, _newline = load_topic(args.file)
+    value = data.get("scribe")
+    if value is not None and not isinstance(value, dict):
+        die('frontmatter key "scribe" is not a mapping')
+    print(as_json(value if value else {}))
+    return 0
+
+
+def cmd_fm_update(args):
+    incoming = parse_json_arg(args.json, dict, "object")
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    scribe.update(incoming)
+    for key in csv_values(args.unset):
+        scribe.pop(key, None)
+    save_topic(args.file, data, body, newline)
+    print(as_json(scribe))
+    return 0
+
+
+def cmd_fm_stamp(args):
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    scribe["scan"] = args.scan
+    scribe["freshness"] = args.freshness
+    save_topic(args.file, data, body, newline)
+    print(as_json({"scan": args.scan, "freshness": args.freshness}))
+    return 0
+
+
+def cmd_fm_credit_section(args):
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    human = as_list(scribe, "human_sections", "scribe.human_sections")
+    if args.slug not in human:
+        human = human + [args.slug]
+    if "inferred_sections" in scribe:
+        inferred = as_list(scribe, "inferred_sections", "scribe.inferred_sections")
+        scribe["inferred_sections"] = [e for e in inferred if entry_id(e) != args.slug]
+    scribe["human_sections"] = human
+    level2 = body_sections(body)
+    matched = len({h[1] for h in level2} & set(human))
+    scribe["human_input"] = percent(matched, len(level2)) if level2 else 0
+    save_topic(args.file, data, body, newline)
+    print(as_json({"human_sections": human, "human_input": scribe["human_input"]}))
+    return 0
+
+
+def cmd_fm_question_pass(args):
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    count = as_int(scribe.get("question_passes"), "scribe.question_passes") + 1
+    scribe["question_passes"] = count
+    save_topic(args.file, data, body, newline)
+    print(count)
+    return 0
+
+
+def cmd_fm_settle(args):
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    passes = as_int(scribe.get("question_passes"), "scribe.question_passes")
+    human = as_int(scribe.get("human_input"), "scribe.human_input")
+    if passes == 2 and human == 0:
+        print("settled")
+        return 0
+    scribe["question_passes"] = 0
+    save_topic(args.file, data, body, newline)
+    print("reset")
+    return 0
+
+
+def cmd_fm_retire_decision(args):
+    data, body, newline = load_topic(args.file)
+    entry = find_decision(scribe_slot(data), args.id)
+    claims, claims_newline = load_yaml_file(args.claims)
+    entry["status"] = "retired"
+    if args.resolved_at is not None:
+        entry["resolved_at"] = args.resolved_at
+    items = as_list(claims, "claims", "%s: claims" % args.claims)
+    kept = [claim for claim in items if entry_id(claim) != args.id]
+    removed = len(kept) != len(items)
+    if removed:
+        claims["claims"] = kept
+    retired = as_list(claims, "_retired_ids", "%s: _retired_ids" % args.claims)
+    claims["_retired_ids"] = retired if args.id in retired else retired + [args.id]
+    save_topic(args.file, data, body, newline)
+    save_yaml_file(args.claims, claims, claims_newline)
+    print(as_json({
+        "id": args.id,
+        "status": "retired",
+        "resolved_at": args.resolved_at,
+        "claim_removed": removed,
+    }))
+    return 0
+
+
+def cmd_fm_refresh_decision(args):
+    data, body, newline = load_topic(args.file)
+    entry = find_decision(scribe_slot(data), args.id)
+    if entry.get("status") == "retired":
+        die('decision "%s" is retired; retired entries are never updated' % args.id)
+    claims, claims_newline = load_yaml_file(args.claims)
+    entry["recorded"] = args.recorded
+    if args.context is not None:
+        entry["context"] = args.context
+    if args.resolved_at is not None:
+        entry["resolved_at"] = args.resolved_at
+    updated = False
+    for claim in as_list(claims, "claims", "%s: claims" % args.claims):
+        if entry_id(claim) != args.id:
+            continue
+        provenance = claim.get("provenance")
+        if not isinstance(provenance, dict):
+            provenance = {}
+            claim["provenance"] = provenance
+        provenance["recorded"] = args.recorded
+        if args.context is not None:
+            provenance["context"] = args.context
+        updated = True
+    save_topic(args.file, data, body, newline)
+    save_yaml_file(args.claims, claims, claims_newline)
+    print(as_json({
+        "id": args.id,
+        "recorded": args.recorded,
+        "context": args.context,
+        "resolved_at": args.resolved_at,
+        "claim_updated": updated,
+    }))
+    return 0
+
+
+def cmd_fm_remove_stale_flag(args):
+    data, body, newline = load_topic(args.file)
+    scribe = scribe_slot(data)
+    flags = as_list(scribe, "stale_flags", "scribe.stale_flags")
+    kept = [flag for flag in flags if entry_id(flag) != args.id]
+    removed = len(flags) - len(kept)
+    if removed:
+        scribe["stale_flags"] = kept
+        save_topic(args.file, data, body, newline)
+    print(removed)
+    return 0
+
+
+def cmd_claims_add(args):
+    incoming = parse_json_arg(args.json, list, "array")
+    if os.path.exists(args.claims):
+        claims, newline = load_yaml_file(args.claims)
+    else:
+        claims, newline = {}, "\n"
+    items = as_list(claims, "claims", "%s: claims" % args.claims)
+    retired = as_list(claims, "_retired_ids", "%s: _retired_ids" % args.claims)
+    number = _next_claim_number(args.topic, items, retired + csv_values(args.reserved))
+    added = []
+    matched = []
+    for entry in incoming:
+        if not isinstance(entry, dict):
+            die("every --json element must be a JSON object")
+        if "id" in entry:
+            die("incoming claims must not carry an id")
+        if entry.get("type") is None or entry.get("claim") is None:
+            die("every claim needs a type and a claim")
+        existing = _matching_claim(items, args.topic, entry)
+        if existing is not None:
+            matched.append(existing.get("id"))
+            continue
+        built = {
+            "id": "%s-%d" % (args.topic, number),
+            "type": entry["type"],
+            "topic": args.topic,
+            "claim": entry["claim"],
+        }
+        for key in ["source", "provenance"]:
+            if key in entry:
+                built[key] = entry[key]
+        for key, value in entry.items():
+            if key not in built and key != "topic":
+                built[key] = value
+        items.append(built)
+        added.append(built["id"])
+        number += 1
+    claims["claims"] = items
+    save_yaml_file(args.claims, claims, newline)
+    print(as_json({"added": added, "matched": matched}))
+    return 0
+
+
+def _next_claim_number(topic, items, reserved):
+    pattern = re.compile(r"^%s-(\d+)$" % re.escape(topic))
+    highest = 0
+    for value in [entry_id(claim) for claim in items] + list(reserved):
+        match = pattern.match(value) if isinstance(value, str) else None
+        if match:
+            highest = max(highest, int(match.group(1)))
+    return highest + 1
+
+
+def _matching_claim(items, topic, entry):
+    head = str(entry["claim"])[:50]
+    for claim in items:
+        if not isinstance(claim, dict):
+            continue
+        if claim.get("type") != entry["type"] or claim.get("topic") != topic:
+            continue
+        if str(claim.get("claim", ""))[:50] == head:
+            return claim
+    return None
+
+
+def cmd_claims_set_meta(args):
+    claims, newline = load_yaml_file(args.claims)
+    meta = claims.get("_meta")
+    if meta is None:
+        meta = {}
+        claims["_meta"] = meta
+    elif not isinstance(meta, dict):
+        die("%s: _meta is not a mapping" % args.claims)
+    key = "%s_extracted_at" % args.topic
+    meta[key] = args.sha
+    save_yaml_file(args.claims, claims, newline)
+    print(key)
+    return 0
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="scribe-lib.py",
@@ -693,6 +1320,95 @@ def build_parser():
     p = add("repair-watch-paths", "widen watch paths to existing directories", REPAIR_WATCH_PATHS_HELP)
     p.add_argument("path", metavar="PATH", nargs="*")
     p.set_defaults(func=cmd_repair_watch_paths)
+
+    def group(name, help_text, description):
+        parent = sub.add_parser(
+            name,
+            help=help_text,
+            description=description,
+            formatter_class=argparse.RawDescriptionHelpFormatter,
+            epilog=FM_RULES,
+        )
+        verbs = parent.add_subparsers(dest=name + "_verb", metavar="VERB")
+        verbs.required = True
+
+        def add_verb(verb, verb_help, verb_description):
+            return verbs.add_parser(
+                verb,
+                help=verb_help,
+                description=verb_description,
+                formatter_class=argparse.RawDescriptionHelpFormatter,
+                epilog=FM_RULES,
+            )
+
+        return add_verb
+
+    fm = group("fm", "read and write a topic file's scribe: frontmatter", FM_HELP)
+
+    p = fm("read", "print the scribe: mapping as JSON", FM_READ_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.set_defaults(func=cmd_fm_read)
+
+    p = fm("update", "merge keys into the scribe: mapping", FM_UPDATE_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("--json", required=True, metavar="OBJECT")
+    p.add_argument("--unset", metavar="CSV")
+    p.set_defaults(func=cmd_fm_update)
+
+    p = fm("stamp", "set scan and freshness", FM_STAMP_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("--scan", required=True, metavar="SHA")
+    p.add_argument("--freshness", required=True, type=int, metavar="N")
+    p.set_defaults(func=cmd_fm_stamp)
+
+    p = fm("credit-section", "credit a section to the SME and rescore", FM_CREDIT_SECTION_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("slug", metavar="SLUG")
+    p.set_defaults(func=cmd_fm_credit_section)
+
+    p = fm("question-pass", "increment question_passes", FM_QUESTION_PASS_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.set_defaults(func=cmd_fm_question_pass)
+
+    p = fm("settle", "apply the settling rule to question_passes", FM_SETTLE_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.set_defaults(func=cmd_fm_settle)
+
+    p = fm("retire-decision", "tombstone a decision and retire its claim", FM_RETIRE_DECISION_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("id", metavar="ID")
+    p.add_argument("--claims", required=True, metavar="PATH")
+    p.add_argument("--resolved-at", metavar="SHA")
+    p.set_defaults(func=cmd_fm_retire_decision)
+
+    p = fm("refresh-decision", "re-date a decision and its claim", FM_REFRESH_DECISION_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("id", metavar="ID")
+    p.add_argument("--claims", required=True, metavar="PATH")
+    p.add_argument("--recorded", required=True, metavar="DATE")
+    p.add_argument("--context", metavar="TEXT")
+    p.add_argument("--resolved-at", metavar="SHA")
+    p.set_defaults(func=cmd_fm_refresh_decision)
+
+    p = fm("remove-stale-flag", "drop stale_flags entries by id", FM_REMOVE_STALE_FLAG_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("id", metavar="ID")
+    p.set_defaults(func=cmd_fm_remove_stale_flag)
+
+    claims = group("claims", "read and write a .claims.yml file", CLAIMS_HELP)
+
+    p = claims("add", "append claims, reusing ids where they match", CLAIMS_ADD_HELP)
+    p.add_argument("--claims", required=True, metavar="PATH")
+    p.add_argument("--topic", required=True, metavar="T")
+    p.add_argument("--json", required=True, metavar="ARRAY")
+    p.add_argument("--reserved", metavar="CSV")
+    p.set_defaults(func=cmd_claims_add)
+
+    p = claims("set-meta", "record a topic's extraction SHA", CLAIMS_SET_META_HELP)
+    p.add_argument("--claims", required=True, metavar="PATH")
+    p.add_argument("--topic", required=True, metavar="T")
+    p.add_argument("--sha", required=True, metavar="SHA")
+    p.set_defaults(func=cmd_claims_set_meta)
 
     return parser
 

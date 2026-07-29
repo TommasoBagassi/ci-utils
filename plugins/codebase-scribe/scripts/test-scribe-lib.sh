@@ -33,6 +33,15 @@ expect() { # $1=name $2=expected stdout $3=expected exit code $4...=args to scri
   fi
 }
 
+check() { # $1=name $2=actual $3=expected -- for assertions about written files
+  if [ "$2" = "$3" ]; then
+    PASS=$((PASS+1))
+  else
+    FAIL=$((FAIL+1))
+    echo "FAIL: $1 -- want [$3], got [$2]"
+  fi
+}
+
 # --- shared parsing rules -------------------------------------------------
 # The "## Fake" heading sits INSIDE frontmatter, so it is only invisible if the
 # BOM / CRLF handling let the frontmatter block be recognised at all.
@@ -243,6 +252,191 @@ expect repair-order-preserved $'src/lib\tsrc/lib\tok\nnope\tnope\tunresolved' 0 
   repair-watch-paths src/lib nope
 expect repair-no-args "" 3 repair-watch-paths
 cd "$TMP" || exit 1
+
+# --- fm read --------------------------------------------------------------
+SW="$TMP/sw"; mkdir -p "$SW"
+printf -- '---\ntitle: X\n---\n# Topic\n' > "$SW/no-scribe.md"
+expect fm-read-no-scribe '{}' 0 fm read "$SW/no-scribe.md"
+
+printf -- '---\nscribe:\n  scan: "abc1234"\n  freshness: 80\n---\n# Topic\n' > "$SW/read.md"
+expect fm-read-populated '{"freshness":80,"scan":"abc1234"}' 0 fm read "$SW/read.md"
+expect fm-read-missing-file "" 3 fm read "$SW/no-such-topic.md"
+
+# --- fm update ------------------------------------------------------------
+printf -- '---\ntitle: X\nscribe:\n  scan: "abc1234"\n  freshness: 80\n  watch_paths: ["src/"]\n---\n# Topic\n' > "$SW/upd.md"
+expect fm-update-merge '{"completeness":40,"freshness":100,"scan":"abc1234","watch_paths":["src/"]}' 0 \
+  fm update "$SW/upd.md" --json '{"freshness":100,"completeness":40}'
+# a key beside "scribe:" is outside every verb's remit and must survive
+check fm-update-keeps-sibling "$(grep -c '^title: X$' "$SW/upd.md")" 1
+expect fm-update-unset '{"freshness":100,"watch_paths":["src/"]}' 0 \
+  fm update "$SW/upd.md" --json '{}' --unset "scan, completeness"
+expect fm-update-replaces-wholesale '{"freshness":100,"watch_paths":["cmd/"]}' 0 \
+  fm update "$SW/upd.md" --json '{"watch_paths":["cmd/"]}'
+
+# --- fm stamp -------------------------------------------------------------
+printf -- '---\nscribe:\n  freshness: 0\n  question_passes: 2\n---\n# Topic\n' > "$SW/stamp.md"
+expect fm-stamp '{"freshness":100,"scan":"deadbee"}' 0 fm stamp "$SW/stamp.md" --scan deadbee --freshness 100
+expect fm-stamp-preserves '{"freshness":100,"question_passes":2,"scan":"deadbee"}' 0 fm read "$SW/stamp.md"
+
+# --- fm credit-section ----------------------------------------------------
+printf -- '---\nscribe:\n  inferred_sections:\n    - id: alpha\n      heading: "## Alpha"\n    - id: alpha/deep\n      heading: "### Deep"\n    - id: beta\n      heading: "## Beta"\n---\n# Topic\n\n## Alpha\n\n### Deep\n\n## Beta\n' > "$SW/credit.md"
+expect fm-credit-adds '{"human_input":50,"human_sections":["alpha"]}' 0 fm credit-section "$SW/credit.md" alpha
+expect fm-credit-repeat-no-dup '{"human_input":50,"human_sections":["alpha"]}' 0 fm credit-section "$SW/credit.md" alpha
+# the top-level inferred entry goes; the subsection beneath it stays
+expect fm-credit-inferred-pruned \
+  '{"human_input":50,"human_sections":["alpha"],"inferred_sections":[{"heading":"### Deep","id":"alpha/deep"},{"heading":"## Beta","id":"beta"}]}' 0 \
+  fm read "$SW/credit.md"
+expect fm-credit-second-section '{"human_input":100,"human_sections":["alpha","beta"]}' 0 \
+  fm credit-section "$SW/credit.md" beta
+
+printf -- '---\nscribe: {}\n---\n# Topic\n\n## Alpha\n\n## Beta\n' > "$SW/ghost.md"
+expect fm-credit-unmatched-slug '{"human_input":0,"human_sections":["ghost"]}' 0 \
+  fm credit-section "$SW/ghost.md" ghost
+# crediting must not introduce an inferred_sections the file never had
+check fm-credit-no-phantom-inferred "$(grep -c inferred_sections "$SW/ghost.md")" 0
+
+printf -- '---\nscribe: {}\n---\n# Topic\n\n## Alpha\n\n```\n## Fenced\n```\n\n## Beta\n' > "$SW/credit-fence.md"
+expect fm-credit-fence-aware '{"human_input":50,"human_sections":["alpha"]}' 0 \
+  fm credit-section "$SW/credit-fence.md" alpha
+
+# --- fm question-pass / settle --------------------------------------------
+printf -- '---\nscribe: {}\n---\n# Topic\n' > "$SW/qp0.md"
+expect fm-question-pass-from-absent 1 0 fm question-pass "$SW/qp0.md"
+printf -- '---\nscribe:\n  question_passes: 2\n---\n# Topic\n' > "$SW/qp2.md"
+expect fm-question-pass-from-two 3 0 fm question-pass "$SW/qp2.md"
+
+printf -- '---\nscribe:\n  question_passes: 2\n  human_input: 0\n---\n# Topic\n' > "$SW/settled.md"
+cp "$SW/settled.md" "$SW/settled.bak"
+expect fm-settle-settled settled 0 fm settle "$SW/settled.md"
+cmp -s "$SW/settled.md" "$SW/settled.bak"; check fm-settle-settled-untouched "$?" 0
+
+printf -- '---\nscribe:\n  question_passes: 2\n  human_input: 40\n---\n# Topic\n' > "$SW/reset.md"
+expect fm-settle-reset reset 0 fm settle "$SW/reset.md"
+expect fm-settle-reset-wrote '{"human_input":40,"question_passes":0}' 0 fm read "$SW/reset.md"
+printf -- '---\nscribe:\n  human_input: 0\n---\n# Topic\n' > "$SW/reset-absent.md"
+expect fm-settle-absent-counter reset 0 fm settle "$SW/reset-absent.md"
+
+# --- fm retire-decision / refresh-decision --------------------------------
+decision_case() { # $1=dir -- a topic with one active decision plus its claim
+  mkdir -p "$1"
+  printf -- '---\nscribe:\n  human_sections:\n    - alpha\n  decisions:\n    - id: t-1\n      type: constraint\n      claim: "Window is fixed"\n      context: "legal"\n      recorded: "2026-03-01"\n      status: active\n---\n# Topic\n\n## Alpha\n' > "$1/topic.md"
+  printf -- 'claims:\n  - id: t-1\n    type: constraint\n    topic: t\n    claim: "Window is fixed"\n    source: "a.go"\n    provenance:\n      origin: user\n      recorded: "2026-03-01"\n  - id: t-2\n    type: pattern\n    topic: t\n    claim: "Other"\n    source: "b.go"\n' > "$1/.claims.yml"
+}
+
+decision_case "$SW/ret"
+expect fm-retire '{"claim_removed":true,"id":"t-1","resolved_at":"cafe123","status":"retired"}' 0 \
+  fm retire-decision "$SW/ret/topic.md" t-1 --claims "$SW/ret/.claims.yml" --resolved-at cafe123
+expect fm-retire-tombstone \
+  '{"decisions":[{"claim":"Window is fixed","context":"legal","id":"t-1","recorded":"2026-03-01","resolved_at":"cafe123","status":"retired","type":"constraint"}],"human_sections":["alpha"]}' 0 \
+  fm read "$SW/ret/topic.md"
+check fm-retire-claim-removed "$(grep -c 'id: t-1' "$SW/ret/.claims.yml")" 0
+check fm-retire-other-claim-kept "$(grep -c 'id: t-2' "$SW/ret/.claims.yml")" 1
+check fm-retire-reserves-id "$(grep -c '^- t-1$' "$SW/ret/.claims.yml")" 1
+
+decision_case "$SW/ret2"
+expect fm-retire-missing-id "" 3 fm retire-decision "$SW/ret2/topic.md" t-9 --claims "$SW/ret2/.claims.yml"
+expect fm-retire-missing-claims-file "" 3 \
+  fm retire-decision "$SW/ret2/topic.md" t-1 --claims "$SW/ret2/gone.yml"
+# nothing was written by either failure, so the entry is still active
+expect fm-retire-failure-left-file-alone \
+  '{"decisions":[{"claim":"Window is fixed","context":"legal","id":"t-1","recorded":"2026-03-01","status":"active","type":"constraint"}],"human_sections":["alpha"]}' 0 \
+  fm read "$SW/ret2/topic.md"
+expect fm-retire-without-sha '{"claim_removed":true,"id":"t-1","resolved_at":null,"status":"retired"}' 0 \
+  fm retire-decision "$SW/ret2/topic.md" t-1 --claims "$SW/ret2/.claims.yml"
+check fm-retire-invents-no-sha "$(grep -c resolved_at "$SW/ret2/topic.md")" 0
+# retiring twice keeps one tombstone id and reports the claim already gone
+expect fm-retire-twice '{"claim_removed":false,"id":"t-1","resolved_at":null,"status":"retired"}' 0 \
+  fm retire-decision "$SW/ret2/topic.md" t-1 --claims "$SW/ret2/.claims.yml"
+check fm-retire-no-duplicate-id "$(grep -c '^- t-1$' "$SW/ret2/.claims.yml")" 1
+
+decision_case "$SW/ref"
+expect fm-refresh \
+  '{"claim_updated":true,"context":"new reasoning","id":"t-1","recorded":"2026-08-01","resolved_at":"cafe123"}' 0 \
+  fm refresh-decision "$SW/ref/topic.md" t-1 --claims "$SW/ref/.claims.yml" \
+  --recorded 2026-08-01 --context "new reasoning" --resolved-at cafe123
+expect fm-refresh-entry \
+  '{"decisions":[{"claim":"Window is fixed","context":"new reasoning","id":"t-1","recorded":"2026-08-01","resolved_at":"cafe123","status":"active","type":"constraint"}],"human_sections":["alpha"]}' 0 \
+  fm read "$SW/ref/topic.md"
+check fm-refresh-claim-context "$(grep -c 'context: new reasoning' "$SW/ref/.claims.yml")" 1
+check fm-refresh-claim-recorded "$(grep -c "recorded: '2026-08-01'" "$SW/ref/.claims.yml")" 1
+expect fm-refresh-without-context '{"claim_updated":true,"context":null,"id":"t-1","recorded":"2026-09-01","resolved_at":null}' 0 \
+  fm refresh-decision "$SW/ref/topic.md" t-1 --claims "$SW/ref/.claims.yml" --recorded 2026-09-01
+check fm-refresh-keeps-context "$(grep -c 'context: new reasoning' "$SW/ref/.claims.yml")" 1
+
+decision_case "$SW/ref2"
+lib fm retire-decision "$SW/ref2/topic.md" t-1 --claims "$SW/ref2/.claims.yml" >/dev/null 2>&1
+expect fm-refresh-retired-refused "" 3 \
+  fm refresh-decision "$SW/ref2/topic.md" t-1 --claims "$SW/ref2/.claims.yml" --recorded 2026-08-01
+
+# --- fm remove-stale-flag -------------------------------------------------
+printf -- '---\nscribe:\n  stale_flags:\n    - id: decision-t-1\n      reason: decision_drift\n    - id: ref-2\n      reason: deleted\n    - id: decision-t-1\n      reason: semantic\n---\n# Topic\n' > "$SW/flags.md"
+expect fm-remove-stale-flag 2 0 fm remove-stale-flag "$SW/flags.md" decision-t-1
+expect fm-remove-stale-flag-kept '{"stale_flags":[{"id":"ref-2","reason":"deleted"}]}' 0 fm read "$SW/flags.md"
+expect fm-remove-stale-flag-none 0 0 fm remove-stale-flag "$SW/flags.md" decision-t-1
+expect fm-remove-stale-flag-absent-list 0 0 fm remove-stale-flag "$SW/read.md" decision-t-1
+
+# --- claims add / set-meta ------------------------------------------------
+CL="$SW/claims"; mkdir -p "$CL"
+expect claims-add-creates-file '{"added":["t-1"],"matched":[]}' 0 \
+  claims add --claims "$CL/.claims.yml" --topic t \
+  --json '[{"type":"pattern","claim":"Purging runs as a scheduled job","source":"a.go"}]'
+# same type, topic and leading 50 characters: the id is kept and nothing else changes
+expect claims-add-exact-match '{"added":[],"matched":["t-1"]}' 0 \
+  claims add --claims "$CL/.claims.yml" --topic t \
+  --json '[{"type":"pattern","claim":"Purging runs as a scheduled job","source":"DIFFERENT.go"}]'
+check claims-add-match-keeps-source "$(grep -c 'source: a.go' "$CL/.claims.yml")" 1
+check claims-add-match-updates-nothing "$(grep -c DIFFERENT "$CL/.claims.yml")" 0
+
+printf -- 'claims:\n  - id: t-1\n    type: pattern\n    topic: t\n    claim: "First"\n    source: "a.go"\n_retired_ids:\n  - t-2\n' > "$CL/seq.yml"
+expect claims-add-skips-retired-and-reserved '{"added":["t-4"],"matched":[]}' 0 \
+  claims add --claims "$CL/seq.yml" --topic t \
+  --json '[{"type":"constraint","claim":"Second","source":"b.go"}]' --reserved "t-3"
+expect claims-add-consecutive-ids '{"added":["t-5","t-6"],"matched":[]}' 0 \
+  claims add --claims "$CL/seq.yml" --topic t \
+  --json '[{"type":"pattern","claim":"Third","source":"c.go"},{"type":"pattern","claim":"Fourth","source":"d.go"}]'
+# same type and text, different topic: matching is per-topic, so this is new
+expect claims-add-other-topic '{"added":["u-1"],"matched":[]}' 0 \
+  claims add --claims "$CL/seq.yml" --topic u \
+  --json '[{"type":"pattern","claim":"Third","source":"c.go"}]'
+expect claims-add-rejects-incoming-id "" 3 \
+  claims add --claims "$CL/seq.yml" --topic t \
+  --json '[{"id":"t-9","type":"pattern","claim":"Fifth","source":"e.go"}]'
+
+expect claims-set-meta t_extracted_at 0 claims set-meta --claims "$CL/seq.yml" --topic t --sha deadbee
+check claims-set-meta-written "$(grep -c '  t_extracted_at: deadbee' "$CL/seq.yml")" 1
+expect claims-set-meta-second-topic u_extracted_at 0 \
+  claims set-meta --claims "$CL/seq.yml" --topic u --sha cafe123
+check claims-set-meta-keeps-first "$(grep -c '  t_extracted_at: deadbee' "$CL/seq.yml")" 1
+expect claims-set-meta-missing-file "" 3 claims set-meta --claims "$CL/gone.yml" --topic t --sha deadbee
+
+# --- writer file handling -------------------------------------------------
+printf -- '---\r\nscribe:\r\n  freshness: 50\r\n---\r\n# Topic\r\n\r\n## Alpha\r\n' > "$SW/crlf-topic.md"
+sed -n '/^# Topic/,$p' "$SW/crlf-topic.md" > "$SW/crlf-body-before"
+expect fm-crlf-stamp '{"freshness":100,"scan":"deadbee"}' 0 \
+  fm stamp "$SW/crlf-topic.md" --scan deadbee --freshness 100
+sed -n '/^# Topic/,$p' "$SW/crlf-topic.md" > "$SW/crlf-body-after"
+cmp -s "$SW/crlf-body-before" "$SW/crlf-body-after"; check fm-crlf-body-identical "$?" 0
+# every LF in the rewritten file is still half of a CRLF pair
+check fm-crlf-preserved \
+  "$(tr -cd '\r' < "$SW/crlf-topic.md" | wc -c | tr -d '[:space:]')" \
+  "$(tr -cd '\n' < "$SW/crlf-topic.md" | wc -c | tr -d '[:space:]')"
+
+printf -- '# Topic\n\n## Alpha\n' > "$SW/bare.md"
+expect fm-bare-stamp '{"freshness":100,"scan":"deadbee"}' 0 \
+  fm stamp "$SW/bare.md" --scan deadbee --freshness 100
+check fm-bare-opens-block "$(head -1 "$SW/bare.md")" '---'
+expect fm-bare-block-parses '{"freshness":100,"scan":"deadbee"}' 0 fm read "$SW/bare.md"
+check fm-bare-body-survives "$(sed -n '/^# Topic/,$p' "$SW/bare.md" | tr -d '\n')" '# Topic## Alpha'
+
+printf -- '---\nscribe: [oops\n---\n# Topic\n' > "$SW/bad.md"
+cp "$SW/bad.md" "$SW/bad.bak"
+expect fm-malformed-dies "" 3 fm question-pass "$SW/bad.md"
+cmp -s "$SW/bad.md" "$SW/bad.bak"; check fm-malformed-leaves-file "$?" 0
+
+printf -- '---\nscribe:\n  freshness: 50\n# Topic\n' > "$SW/unclosed.md"
+cp "$SW/unclosed.md" "$SW/unclosed.bak"
+expect fm-unclosed-dies "" 3 fm question-pass "$SW/unclosed.md"
+cmp -s "$SW/unclosed.md" "$SW/unclosed.bak"; check fm-unclosed-leaves-file "$?" 0
 
 # --- operational errors ---------------------------------------------------
 expect error-missing-file "" 3 tier "$TMP/no-such-file.md"

@@ -53,6 +53,7 @@ Run `/plugin` in Claude Code or check the plugins panel in Cursor to confirm the
 - **git** — the drift model is built on it; under the default `main-only` branching strategy the plugin refuses to run outside a git repository.
 - **bash** — the validation hook and maintainer scripts are bash (on Windows: Git Bash, as shipped with Git for Windows).
 - **python3** — `scripts/scribe-lib.py` implements the plugin's deterministic computations (section parsing, tier and score calculation, scan validation, review classification) and the skills call it on every run. Without python3 the skills fall back to computing the same results manually from the script's documented definitions — workable, but slower and less reliable.
+- **PyYAML** (`pip install pyyaml`) — powers scribe-lib's state-writer verbs, the enforced path for every frontmatter and `.claims.yml` write (stamping, section crediting, decision lifecycle, claims extraction). Without it those verbs refuse with a clear message and the skills fall back to performing the same writes manually — the pre-1.5 behavior, measurably less reliable on multi-step sequences.
 - **jq or python3** — the validation hook parses its hook payload with jq, falling back to python; with neither available the hook is a silent no-op and topic files are not structure-checked on write (see the hook note under [Branching Strategy](#branching-strategy)).
 
 ## Quick Start
