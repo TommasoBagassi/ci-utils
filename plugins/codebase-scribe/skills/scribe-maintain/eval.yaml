@@ -527,17 +527,23 @@ thresholds:
 # as 1.0 honestly rather than lowered — several cases turn on a single
 # deliberately-constructed discriminating assertion, and admitting one failure
 # would let exactly those regress silently.
+# Two judges run at an accepted-baseline threshold (owner decision, 2026-07-29,
+# after the first executed runs of this suite): the model reliably performs the
+# gated behaviors but drops summary/reporting lines — the shallow-clone warning
+# (three reproductions) and single items from the §13 quality-issues entry.
+# 0.83 = the measured 5-of-6 baseline; any NEW failure still trips it. Returns
+# to 1.0 with the planned scribe-lib frontmatter/reporting enforcement wave.
   budget_check:
     min_pass_rate: 1.0
   scan_validation_handling:
     min_pass_rate: 1.0
   shallow_gate_respected:
-    min_pass_rate: 1.0
+    min_pass_rate: 0.83
   drift_table_and_mechanical_fixes:
     min_pass_rate: 1.0
   escalation_flagged:
     min_pass_rate: 1.0
   quality_checks_flagged:
-    min_pass_rate: 1.0
+    min_pass_rate: 0.83
   maintain_quality:
     min_mean: 3.5

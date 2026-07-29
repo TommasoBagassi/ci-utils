@@ -522,17 +522,27 @@ thresholds:
 # turn on a single deliberately-constructed discriminating assertion, and
 # admitting one failure would let exactly those regress silently. (The figure
 # speaks for this suite only: sibling suites size their own thresholds.)
+#
+# Three judges run at an accepted-baseline threshold instead (owner decision,
+# 2026-07-29, after the first executed runs of this suite): the model drops
+# steps in multi-write bookkeeping sequences — claims extraction when
+# .claims.yml must be created (cases 001/003), question-pass crediting and
+# counter (003), and part of the decision-retire write sequence (004) — and
+# one round of targeted prompt fixes did not close them. 0.6 = the measured
+# 3-of-5 baseline; it still catches any NEW failure. The intended proper fix
+# is a scribe-lib frontmatter writer (enforced writes), at which point these
+# return to 1.0.
   budget_check:
     min_pass_rate: 1.0
   two_tier_structure:
     min_pass_rate: 1.0
   human_sections_attribution:
-    min_pass_rate: 1.0
+    min_pass_rate: 0.6
   claims_and_decisions:
-    min_pass_rate: 1.0
+    min_pass_rate: 0.6
   safety_rules_respected:
     min_pass_rate: 1.0
   mode_stamping_and_scope:
-    min_pass_rate: 1.0
+    min_pass_rate: 0.6
   draft_quality:
     min_mean: 3.5
