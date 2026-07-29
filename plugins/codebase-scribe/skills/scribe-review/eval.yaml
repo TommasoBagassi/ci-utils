@@ -182,6 +182,14 @@ judges:
                   yield from walk(value)
 
       nodes = list(walk(events))
+      # A dispatch whose tool_result came back is_error is a failed attempt (e.g.
+      # blocked by a host-side hook) — a retry after it is correct behavior, so
+      # only dispatches that did not error count toward the exactly-one rule.
+      errored_ids = set()
+      for node in nodes:
+          tid = node.get("tool_use_id") or node.get("toolUseId")
+          if tid and (node.get("is_error") is True or node.get("isError") is True):
+              errored_ids.add(tid)
       dispatches = []
       for node in nodes:
           name = node.get("name") or node.get("tool_name") or node.get("toolName")
@@ -192,13 +200,14 @@ judges:
               continue
           subtype = args.get("subagent_type") or args.get("subagentType")
           if subtype is not None:
-              dispatches.append(subtype)
+              dispatches.append((subtype, node.get("id") or node.get("tool_use_id")))
       if not dispatches:
           return (False, f"No Agent/Task tool call carrying a subagent_type appears in outputs['events'] — either the stub reviewed the topic itself instead of dispatching {EXPECTED_SUBTYPE}, or the trace does not record tool inputs. Both are defects to fix, not conditions to pass under.")
-      on_target = [s for s in dispatches if s == EXPECTED_SUBTYPE]
+      on_target = [s for s, i in dispatches if s == EXPECTED_SUBTYPE and i not in errored_ids]
       if len(on_target) != 1:
-          off_target = [s for s in dispatches if s != EXPECTED_SUBTYPE]
-          return (False, f"Expected exactly one dispatch of subagent_type {EXPECTED_SUBTYPE}; found {len(on_target)} (other subagent_types dispatched: {off_target})")
+          off_target = [s for s, i in dispatches if s != EXPECTED_SUBTYPE]
+          failed = sum(1 for s, i in dispatches if s == EXPECTED_SUBTYPE and i in errored_ids)
+          return (False, f"Expected exactly one successful dispatch of subagent_type {EXPECTED_SUBTYPE}; found {len(on_target)} ({failed} errored attempt(s) excluded; other subagent_types dispatched: {off_target})")
 
       # The child's report must be the report the caller relayed. Look for it in
       # tool-result-shaped nodes only — matching any string in the trace would
