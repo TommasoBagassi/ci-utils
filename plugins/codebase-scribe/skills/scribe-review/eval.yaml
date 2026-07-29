@@ -207,6 +207,18 @@ judges:
       if not dispatches:
           return (False, f"No Agent/Task tool call carrying a subagent_type appears in outputs['events'] — either the stub reviewed the topic itself instead of dispatching {EXPECTED_SUBTYPE}, or the trace does not record tool inputs. Both are defects to fix, not conditions to pass under.")
       on_target = [s for s, i in dispatches if s == EXPECTED_SUBTYPE and i not in errored_ids]
+      # Errored attempts excuse only retries: every errored on-target attempt
+      # must PRECEDE the first successful one — a successful dispatch followed
+      # by a blocked second attempt is still a double dispatch.
+      first_ok_seen = False
+      for s, i in dispatches:
+          if s != EXPECTED_SUBTYPE:
+              continue
+          if i in errored_ids:
+              if first_ok_seen:
+                  return (False, f"An errored {EXPECTED_SUBTYPE} dispatch attempt FOLLOWED a successful one — retry-after-error is excused, a second attempt after success is not")
+          else:
+              first_ok_seen = True
       if len(on_target) != 1:
           off_target = [s for s, i in dispatches if s != EXPECTED_SUBTYPE]
           failed = sum(1 for s, i in dispatches if s == EXPECTED_SUBTYPE and i in errored_ids)
