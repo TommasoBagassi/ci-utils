@@ -4,7 +4,24 @@ skill: codebase-scribe:scribe-discover
 
 execution:
   mode: case
-  arguments: ""
+  # The orchestrator passes the approved brief in-context; an empty arguments
+  # string left the skill with nothing to act on, so it asked for the topic
+  # list and halted. Rendered from the case's input.yaml so the skill receives
+  # exactly what the orchestrator would hand it.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    topics:
+    {%- for t in input.topics %}
+      - name: {{ t.name }}
+        title: {{ t.title }}
+        watch_paths: {{ t.watch_paths }}
+      {%- if t.migration_source is defined %}
+        migration_source: "{{ t.migration_source }}"
+      {%- endif %}
+      {%- if t.migration_sections is defined %}
+        migration_sections: {{ t.migration_sections }}
+      {%- endif %}
+    {%- endfor %}
   timeout: 900
   max_budget_usd: 2.0
 
@@ -88,8 +105,13 @@ dataset:
         preexisting_content
 
 outputs:
-  - path: output
-    schema: |
+  # No `path:` entry. The harness hardcodes the workspace's `output/` directory
+  # as its own stdout/stderr trace sink, so declaring it here pulled the run
+  # transcript into outputs["files"] — and the transcript quotes the stub
+  # template, which made no_output_outside_docs_dir flag every run for writing
+  # "stub content" to output/stdout.log. The topic files reach judges through
+  # collection.snapshot instead; stdout stays available as outputs["stdout"].
+  - schema: |
       Stub files written to <docs_dir>/<name>.md, one per approved topic, plus a
       regenerated <docs_dir>/STATUS.md. Use outputs["files"] to access all files
       in the working tree after the run (both newly created and pre-existing).
@@ -109,6 +131,18 @@ outputs:
       & Context, Links) each containing a line beginning with the literal stub
       placeholder marker "*Stub — will be populated by the draft skill.*" (em dash,
       U+2014).
+
+collection:
+  # HARD RULES 2 and 5 are identity assertions about files discover must NOT
+  # write. The default git-diff collection only surfaces changed files, so an
+  # untouched AGENTS.md and an untouched collision fixture were indistinguishable
+  # from deleted ones — both judges failed on correct behaviour.
+  snapshot: true
+  # The harness hardcodes `output/` in the workspace as its stdout/stderr sink.
+  # It is not skill output and its transcript quotes the stub template, so
+  # leaving it in would make marker scans flag every run.
+  exclude:
+    - output
 
 traces:
   stdout: true
@@ -132,7 +166,15 @@ judges:
       import yaml, re
       files = outputs.get("files", {})
       annotations = outputs.get("annotations", {})
-      arguments = outputs.get("arguments", {})
+      import os
+      # The brief is the case's own input.yaml, loaded from the case directory.
+      # The harness has no outputs["arguments"] key, and its outputs["inputs"]
+      # is pre-rendered markdown rather than structured data.
+      arguments = {}
+      brief_path = os.path.join(outputs.get("case_dir", ""), "input.yaml")
+      if os.path.isfile(brief_path):
+          with open(brief_path, encoding="utf-8") as fh:
+              arguments = yaml.safe_load(fh) or {}
       docs_dir = annotations.get("expected_docs_dir", "docs/agents")
       expected_created = annotations.get("expected_created", [])
       # Fail loudly rather than open. The watch_paths-fidelity and
@@ -142,7 +184,7 @@ judges:
       # judge still returned True — a green run proving nothing.
       raw_topics = arguments.get("topics")
       if expected_created and not raw_topics:
-          return (False, "arguments.topics is unavailable, so the watch_paths-fidelity and migration-field assertions cannot be evaluated at all — check that the runner populates outputs['arguments'] from the case's input.yaml")
+          return (False, "the case brief is unavailable, so the watch_paths-fidelity and migration-field assertions cannot be evaluated at all — check that input.yaml reaches the case workspace via dataset.workspace.files")
       topics = {t["name"]: t for t in (raw_topics or [])}
       problems = []
       for name in expected_created:
@@ -423,8 +465,8 @@ judges:
     prompt: |
       Evaluate this scribe-discover run against its contract.
 
-      Topics requested: {{ arguments.topics }}
-      docs_dir: {{ arguments.docs_dir }}
+      The brief discover was given (the case's input.yaml):
+      {{ outputs.files['input.yaml'] }}
 
       Full transcript and outputs:
       {{ conversation }}
@@ -447,10 +489,6 @@ judges:
       3: Correct stubs but missing/incorrect migration fields or STATUS.md
       4: Fully correct with a minor reporting gap
       5: Exactly matches the §5 contract — mechanical, scoped, collision-safe
-
-    arguments:
-      topics: "{{ arguments.topics }}"
-      docs_dir: "{{ arguments.docs_dir }}"
 
 thresholds:
 # This suite has 5 cases, so any min_pass_rate above 0.8 already requires 5/5:

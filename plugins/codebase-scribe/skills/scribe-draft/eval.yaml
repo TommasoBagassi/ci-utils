@@ -4,12 +4,29 @@ skill: codebase-scribe:scribe-draft
 
 execution:
   mode: case
-  arguments: ""
+  # The orchestrator's draft brief. An empty arguments string left the skill
+  # with no batch, no repo flags and no docs_dir to act on. JSON is used for
+  # the structured fields because it is unambiguous and valid YAML.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    default_branch: {{ input.default_branch }}
+    branching_strategy: {{ input.branching_strategy }}
+    current_branch: {{ input.current_branch }}
+    shallow: {{ input.shallow }}
+    {%- if input.batch is defined %}
+    batch: {{ input.batch | tojson }}
+    {%- endif %}
+    {%- if input.rework is defined %}
+    watch_paths: {{ input.watch_paths | tojson }}
+    rework: {{ input.rework | tojson }}
+    {%- endif %}
   timeout: 2400
   max_budget_usd: 8.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -29,8 +46,18 @@ permissions:
 mlflow:
   experiment: codebase-scribe-eval
 
+collection:
+  # Judges assert on topic files the skill must leave alone as well as the ones
+  # it rewrites; the default changed-files-only collection hides the former.
+  snapshot: true
+
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-draft/eval/cases
+  path: eval/cases
+  workspace:
+    files:
+      - src
+      - docs
+      - .scribe.yml
   schema: |
     Each case directory contains:
     - input.yaml: the orchestrator brief scribe-draft receives — YAML with:

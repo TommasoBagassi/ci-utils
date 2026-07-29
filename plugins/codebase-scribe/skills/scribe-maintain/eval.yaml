@@ -4,12 +4,23 @@ skill: codebase-scribe:scribe-maintain
 
 execution:
   mode: case
-  arguments: ""
+  # The orchestrator's maintain brief. An empty arguments string left the skill
+  # with no topics, no repo flags and no docs_dir to act on. JSON is used for
+  # the structured fields because it is unambiguous and valid YAML.
+  arguments: |
+    docs_dir: {{ input.docs_dir }}
+    default_branch: {{ input.default_branch }}
+    branching_strategy: {{ input.branching_strategy }}
+    current_branch: {{ input.current_branch }}
+    shallow: {{ input.shallow }}
+    topics: {{ input.topics | tojson }}
   timeout: 2400
   max_budget_usd: 8.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -29,8 +40,20 @@ permissions:
 mlflow:
   experiment: codebase-scribe-eval
 
+collection:
+  # shallow_gate_respected asserts a topic's freshness is UNCHANGED when the
+  # gate trips. Under the default changed-files-only collection an untouched
+  # topic file is absent, which that judge reads as "not found".
+  snapshot: true
+
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-maintain/eval/cases
+  path: eval/cases
+  workspace:
+    files:
+      - src
+      - docs
+      - .scribe.yml
+      - diff.txt
   schema: |
     Each case directory contains:
     - input.yaml: the orchestrator brief scribe-maintain receives — YAML with:

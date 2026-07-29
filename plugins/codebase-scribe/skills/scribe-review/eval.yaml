@@ -4,12 +4,25 @@ skill: codebase-scribe:scribe-review
 
 execution:
   mode: case
-  arguments: ""
+  # The Step 9c brief the orchestrator constructs. An empty arguments string
+  # left the skill with nothing to dispatch on.
+  arguments: |
+    topic_name: {{ input.topic_name }}
+    docs_dir: {{ input.docs_dir }}
+    watch_paths: {{ input.watch_paths }}
+    source_files: {{ input.source_files }}
+    change_classification: {{ input.change_classification }}
+    change_summary: {{ input.change_summary }}
+    claims: {{ input.claims }}
+    topic_content: |
+      {{ input.topic_content | indent(6) }}
   timeout: 900
   max_budget_usd: 3.0
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -28,7 +41,13 @@ mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-review/eval/cases
+  path: eval/cases
+  workspace:
+    # The dispatched agent must Read the real sources itself rather than trust
+    # the brief; without this only input.yaml reached the workspace and there
+    # was nothing to read.
+    files:
+      - src
   schema: |
     Each case directory contains:
     - input.yaml: the Step 9c brief, passed to the scribe-review SKILL exactly
