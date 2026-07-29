@@ -163,6 +163,9 @@ classify_case classify-d-claim-change  claim_change     "$CD/snap.md"       "$CD
 classify_case classify-e-section-chg   section_change   "$CD/snap.md"       "$CD/cc.txt"      "$CD/sh-diff.txt" 100
 classify_case classify-f-large-diff    large_diff       "$CD/snap.md"       "$CD/cc.txt"      "$CD/sh.txt"      1
 classify_case classify-g-minor         minor_mechanical "$CD/snap.md"       "$CD/cc.txt"      "$CD/sh.txt"      10
+# deleted "---" content lines render as "----" in a unified diff and must count
+cat "$CD/snap.md" > "$CD/snap-hr.md"; printf -- '---\n---\n---\n---\n' >> "$CD/snap-hr.md"
+classify_case classify-f-hr-deletions  large_diff       "$CD/snap-hr.md"    "$CD/cc.txt"      "$CD/sh.txt"      7
 # claims AND headings both differ: rule d wins because the order is strict
 classify_case classify-precedence      claim_change     "$CD/snap.md"       "$CD/cc-diff.txt" "$CD/sh-diff.txt" 100
 # both claim files missing read as empty, so they are equal

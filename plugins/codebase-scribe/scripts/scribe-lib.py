@@ -10,6 +10,7 @@ import os
 import re
 import subprocess
 import sys
+import typing
 
 SKIP_DIRS = {".git", "node_modules", "vendor", "dist", "_output", "__pycache__", ".build"}
 STUB_MARKER = "*Stub — will be populated"
@@ -169,7 +170,10 @@ path relative to the current working directory, so the same directory reached
 through two WATCH_PATH spellings is counted once. Subdirectories named .git,
 node_modules, vendor, dist, _output, __pycache__ or .build are excluded from
 the population, and directories with those names are also skipped while
-descending, so files beneath them never count as evidence.
+descending, so files beneath them never count as evidence. (The exclusion is a
+deliberate 1.4.0 change: the pre-1.4 prose formula counted every depth-1
+subdirectory, vendored ones included, which penalized topics for not citing
+dependency code the drafting skill is forbidden from reading.)
 
 A subdirectory is "covered" when at least one file anywhere beneath it
 (recursively) has its path -- taken relative to the current working directory
@@ -219,7 +223,7 @@ small the diff is.
 """
 
 
-def die(message):
+def die(message) -> "typing.NoReturn":
     sys.stderr.write("scribe-lib: %s\n" % message)
     raise SystemExit(3)
 
@@ -228,7 +232,7 @@ def read_lines(path):
     try:
         with open(path, encoding="utf-8-sig") as handle:
             text = handle.read()
-    except OSError as exc:
+    except (OSError, UnicodeDecodeError) as exc:
         die(str(exc))
     lines = text.split("\n")
     if lines and lines[-1] == "":
@@ -298,13 +302,10 @@ def percent(part, total):
 
 
 def changed_line_count(old, new):
-    count = 0
-    for line in difflib.unified_diff(old, new, lineterm=""):
-        if line.startswith("+++") or line.startswith("---"):
-            continue
-        if line.startswith("+") or line.startswith("-"):
-            count += 1
-    return count
+    # Skip the two file headers by position, not by prefix: a deleted "---"
+    # content line renders as "----" and would be dropped by a prefix test.
+    lines = list(difflib.unified_diff(old, new, lineterm=""))
+    return sum(1 for line in lines[2:] if line.startswith(("+", "-")))
 
 
 def frontmatter_scan(lines):

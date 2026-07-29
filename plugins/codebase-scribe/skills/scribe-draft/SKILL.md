@@ -167,7 +167,7 @@ considered.]
 - **Stub drafts have exactly these 5 sections** — a floor and a ceiling, matching §12. A section with nothing to say gets one line explaining why ("No known gotchas for this area yet."), never omitted.
 - **Concrete over abstract:** actual file paths, function names, commands.
 - **Citations: `symbol in file`, never bare line numbers** — line numbers drift; symbol names are stable anchors.
-- **Volatile inventories: describe where they live; never enumerate.** Routes, CLI flags, config keys: point to where the current list lives.
+- **Volatile inventories: describe where they live; never enumerate** — unless review mechanically re-verifies the enumeration every run. Routes, CLI flags, config keys: point to where the current list lives.
 - **Present state only — no changelog language.** Forbidden: "was updated", "now supports", "was added", "formerly", "previously", "changed from X to Y", "gained a", "was renamed", "is now". Rewrite changed sections as if the current state had always been true; git history is the changelog.
 - **Target 200-400 lines.** Over 500 (or `content.split_threshold`): propose a split. Over 800: hard split — propose overview + deep-dive subtopics.
 

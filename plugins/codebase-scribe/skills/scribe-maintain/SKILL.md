@@ -78,7 +78,7 @@ For each frontmatter `decisions:` entry with `status: active` (no `status` = `ac
 0. **Base selection (guarded stored-SHA consumer):** the diff base is the entry's `resolved_at` when it is present, passes scribe-lib `validate-sha`, AND is a descendant of `scan` (`git merge-base --is-ancestor <scan_sha> <resolved_at>` — an ancestry test, not a max comparison). Otherwise the base is `scan_sha`; a failing `resolved_at` is ignored — fail toward re-detection.
 1. `git diff --stat <base>..HEAD -- <source_file>`.
 2. Changed by more than `drift.decision_lines_threshold` lines (default 5)? Then check the diff hunks for key terms from the claim text.
-3. Both conditions met → the decision may be outdated; add a stale flag with `reason: "decision_drift"`, `id: decision-<claim-id>`, `flagged_at_sha: <current HEAD>`, and a `detail` naming the claim, its recorded date, and the changed file.
+3. Both conditions met → the decision may be outdated; add a stale flag with `reason: "decision_drift"`, `id: decision-<claim-id>`, `heading: "<section where the claim appears>"`, `flagged_at_sha: <current HEAD>`, and a `detail` naming the claim, its recorded date, and the changed file.
 
 **Deduplication:** multiple active entries referencing the same changed file within one topic get ONE flag listing all affected claims in `detail`. **Retired entries are never re-flagged.**
 

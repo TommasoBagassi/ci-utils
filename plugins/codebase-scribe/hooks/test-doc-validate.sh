@@ -211,6 +211,19 @@ run_cases() {
     FAIL=$((FAIL+1)); echo "FAIL[$MODE]: competing-file-path-keys rc=$rc -> $out"
   fi
 
+  # duplicate file_path keys resolve to the LAST occurrence on both rungs
+  out="$(printf '{"tool_input":{"file_path":"%s","file_path":"%s"}}' "$D/good.md" "$D/no-heading.md" | bash "$HOOK" 2>"$TMP/g4d.err")"; rc=$?
+  if [ $rc -eq 0 ] && [ ! -s "$TMP/g4d.err" ] && printf '%s' "$out" | grep -q '"systemMessage".*no-heading\.md'; then
+    PASS=$((PASS+1))
+  else
+    FAIL=$((FAIL+1)); echo "FAIL[$MODE]: duplicate-key-last-wins rc=$rc -> $out"
+  fi
+
+  # trailing comma is malformed JSON on both rungs -> silent no-op
+  out="$(printf '{"tool_input":{"file_path":"%s",}}' "$D/no-heading.md" | bash "$HOOK" 2>"$TMP/g4e.err")"; rc=$?
+  [ $rc -eq 0 ] && [ -z "$out" ] && [ ! -s "$TMP/g4e.err" ] && PASS=$((PASS+1)) \
+    || { FAIL=$((FAIL+1)); echo "FAIL[$MODE]: trailing-comma-json rc=$rc -> $out"; }
+
   # a Windows-native absolute docs_dir must match a Windows-native incoming path
   if command -v cygpath >/dev/null 2>&1; then
     win_docs="$(cygpath -w "$TMP/repo/docs/ai" 2>/dev/null)"
