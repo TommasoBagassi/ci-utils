@@ -10,6 +10,8 @@ execution:
 
 runner:
   type: claude-code
+  plugin_dirs:
+    - plugins/codebase-scribe
 
 models:
   skill: claude-opus-4-6
@@ -28,7 +30,16 @@ mlflow:
   experiment: codebase-scribe-eval
 
 dataset:
-  path: plugins/codebase-scribe/skills/scribe-discover/eval/cases
+  path: eval/cases
+  workspace:
+    # Without this the harness copies only input.yaml, so the distractor src/
+    # tree, the AGENTS.md fixture and the pre-existing topic files never reach
+    # the skill — every judge that turns on their presence passes vacuously.
+    # Entries absent from a given case are skipped.
+    files:
+      - src
+      - AGENTS.md
+      - docs
   schema: |
     Each case directory contains:
     - input.yaml: the orchestrator brief scribe-discover receives — YAML with:
