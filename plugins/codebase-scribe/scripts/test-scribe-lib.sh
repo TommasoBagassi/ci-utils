@@ -173,6 +173,77 @@ expect classify-missing-claims minor_mechanical 0 classify "$CD/current.md" --sn
   --snapshot-claims "$CD/gone-a.txt" --current-claims "$CD/gone-b.txt" \
   --snapshot-headings "$CD/sh.txt" --threshold 10
 
+# --- hub-state ------------------------------------------------------------
+HB="$TMP/hub"; mkdir -p "$HB"
+expect hub-state-absent absent 0 hub-state "$HB/no-such-hub.md"
+
+printf -- '<!-- scribe:managed -->\n# Hub\n' > "$HB/managed.md"
+expect hub-state-managed managed 0 hub-state "$HB/managed.md"
+
+printf -- '# Hub\n\n  <!-- scribe:managed:append-only -->\n' > "$HB/append.md"
+expect hub-state-append-only append-only 0 hub-state "$HB/append.md"
+
+printf -- '# Hub\n\nNothing here.\n' > "$HB/plain.md"
+expect hub-state-unmarked unmarked 0 hub-state "$HB/plain.md"
+
+# A hub that only documents the convention must not be silently adopted.
+printf -- '# Hub\n\n```markdown\n<!-- scribe:managed -->\n```\n' > "$HB/fenced.md"
+expect hub-state-fenced-marker unmarked 0 hub-state "$HB/fenced.md"
+
+printf -- '# Hub\n\nAdd <!-- scribe:managed --> to opt in.\n' > "$HB/midline.md"
+expect hub-state-midline-marker unmarked 0 hub-state "$HB/midline.md"
+
+# append-only is the more restrictive mode, so it wins even when it comes second
+printf -- '<!-- scribe:managed -->\n<!-- scribe:managed:append-only -->\n' > "$HB/both.md"
+expect hub-state-both-markers append-only 0 hub-state "$HB/both.md"
+
+# --- hub-links ------------------------------------------------------------
+printf -- '- [Api](docs/agents/api.md)\n[ref]: docs/agents/ref.md\n' > "$HB/l-basic.md"
+expect hub-links-inline-and-reference $'docs/agents/api.md\ndocs/agents/ref.md' 0 \
+  hub-links "$HB/l-basic.md" --docs-dir docs/agents
+
+printf -- '- [Old](docs/agents-old/api.md)\n- [X](docs/agentsx)\n' > "$HB/l-sibling.md"
+expect hub-links-segment-boundary "" 0 hub-links "$HB/l-sibling.md" --docs-dir docs/agents
+
+printf -- '- [Dot](./docs/agents/dot.md)\n' > "$HB/l-dot.md"
+expect hub-links-dot-slash-stripped docs/agents/dot.md 0 \
+  hub-links "$HB/l-dot.md" --docs-dir docs/agents
+
+printf -- 'See [a](docs/agents/a.md) and [b](docs/agents/b.md) both.\n' > "$HB/l-two.md"
+expect hub-links-two-on-one-line $'docs/agents/a.md\ndocs/agents/b.md' 0 \
+  hub-links "$HB/l-two.md" --docs-dir docs/agents
+
+# link matching is defined over the whole file, so fences are not skipped here
+printf -- '```\n[Fenced](docs/agents/fenced.md)\n```\n' > "$HB/l-fenced.md"
+expect hub-links-fence-not-skipped docs/agents/fenced.md 0 \
+  hub-links "$HB/l-fenced.md" --docs-dir docs/agents
+
+expect hub-links-none "" 0 hub-links "$HB/plain.md" --docs-dir docs/agents
+expect hub-links-missing-file "" 3 hub-links "$HB/no-such-hub.md" --docs-dir docs/agents
+
+# --- repair-watch-paths ---------------------------------------------------
+mkdir -p "$TMP/wp/src/lib" "$TMP/wp/cmd/server"
+echo x > "$TMP/wp/cmd/server/main.go"
+echo x > "$TMP/wp/top.txt"
+cd "$TMP/wp" || exit 1
+expect repair-file-widened $'cmd/server\tcmd/server/main.go\tok' 0 \
+  repair-watch-paths cmd/server/main.go
+expect repair-trailing-slash $'src/lib\tsrc/lib/\tok' 0 repair-watch-paths "src/lib/"
+expect repair-backslashes $'src/lib\tsrc\\lib\\\tok' 0 repair-watch-paths 'src\lib\'
+expect repair-single-segment-dir $'src\tsrc\tok' 0 repair-watch-paths src
+expect repair-single-segment-file $'top.txt\ttop.txt\tok' 0 repair-watch-paths top.txt
+expect repair-single-segment-unresolved $'nope\tnope\tunresolved' 0 repair-watch-paths nope
+# nothing on the way up exists, so the walk stops at the preserved single segment
+expect repair-walks-to-single-segment $'nope\tnope/deep/x.go\tunresolved' 0 \
+  repair-watch-paths nope/deep/x.go
+# both entries repair to cmd/server; the first occurrence keeps its <original>
+expect repair-dedupe-first-wins $'cmd/server\tcmd/server/main.go\tok' 0 \
+  repair-watch-paths cmd/server/main.go cmd/server/
+expect repair-order-preserved $'src/lib\tsrc/lib\tok\nnope\tnope\tunresolved' 0 \
+  repair-watch-paths src/lib nope
+expect repair-no-args "" 3 repair-watch-paths
+cd "$TMP" || exit 1
+
 # --- operational errors ---------------------------------------------------
 expect error-missing-file "" 3 tier "$TMP/no-such-file.md"
 

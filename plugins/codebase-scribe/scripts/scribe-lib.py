@@ -14,9 +14,13 @@ import typing
 
 SKIP_DIRS = {".git", "node_modules", "vendor", "dist", "_output", "__pycache__", ".build"}
 STUB_MARKER = "*Stub — will be populated"
+MANAGED_MARKER = "<!-- scribe:managed -->"
+APPEND_ONLY_MARKER = "<!-- scribe:managed:append-only -->"
 HEADING_RE = re.compile(r"^(#{1,6})[ \t]+(.*)$")
 SCAN_RE = re.compile(r"^[ \t]*scan:[ \t]*(.*)$")
 SHA_RE = re.compile(r"[0-9a-f]{7,40}")
+INLINE_LINK_RE = re.compile(r"\[[^\]]*\]\([ \t]*([^)\s]*)")
+REF_LINK_RE = re.compile(r"^\[[^\]]*\]:[ \t]*(\S+)")
 
 SHARED_RULES = """\
 SHARED PARSING RULES (identical to the doc-validate.sh hook)
@@ -220,6 +224,99 @@ later rule is evaluated:
 Because the order is strict, a change that alters both claims and headings is
 reported as claim_change, and a snapshot with a null scan is new_draft however
 small the diff is.
+"""
+
+HUB_STATE_HELP = """\
+Classify the AGENTS.md hub FILE. Prints exactly one word:
+
+    absent        FILE does not exist. This is a classification and not an
+                  error: the exit code is 0 and stderr stays empty.
+    append-only   a marker line for "<!-- scribe:managed:append-only -->" is
+                  present.
+    managed       a marker line for "<!-- scribe:managed -->" is present and
+                  no append-only marker line is.
+    unmarked      FILE exists and carries no marker line.
+
+A MARKER LINE is a line outside every fenced block whose entire content, once
+surrounding whitespace is stripped, is exactly the marker string. Fences work
+as they do everywhere else here: a column-0 "```" or "~~~" opens a block and
+only the marker that opened it closes it. A marker occurring in any other
+position -- inside a fence, in a sentence, or embedded in a longer line -- is
+not a marker line, so a hub that merely documents the convention classifies
+"unmarked" and is never silently adopted.
+
+When both marker lines are present, append-only wins whichever comes first: it
+is the more restrictive mode, and a file the scribe may only append to must
+never be widened to full management by a stray second marker.
+
+Nothing is special-cased for hubs, so the shared frontmatter rule applies
+unchanged even though hubs carry no frontmatter: in a FILE whose line 1 is
+exactly "---", the lines through the next "---" are frontmatter and are not
+searched for markers.
+"""
+
+HUB_LINKS_HELP = """\
+Print the destination of every topic link in FILE, one per line, in document
+order. Both markdown link spellings are read:
+
+  * inline links, "[text](dest)" -- every occurrence on a line is found, not
+    only the first;
+  * reference-style definitions, "[label]: dest" -- recognised only when "["
+    is the first character of the line, so an indented definition is not one.
+
+The destination is the text up to the first whitespace or ")", which drops a
+title: "[t](dest "Title")" yields dest alone. An angle-bracketed
+destination, "[t](<dest>)", is not unwrapped.
+
+A destination is a TOPIC LINK when, after a single leading "./" is stripped,
+it is exactly the --docs-dir value D or begins with D followed by "/". The
+test is over whole path segments and never a bare string prefix: with
+--docs-dir docs/agents, "docs/agents" and "docs/agents/api.md" match while
+"docs/agents-old/api.md" and "docs/agentsx" do not. D is used exactly as
+given, so a trailing slash on it is not stripped. The destination is printed
+after the "./" strip, so "./docs/agents/api.md" prints "docs/agents/api.md".
+
+Fenced blocks are NOT skipped, unlike everywhere else in this program: the
+plugin defines link matching over the whole file, so a link inside a "```" or
+"~~~" block counts like any other.
+
+When one line holds both a reference definition and inline links, the
+definition is printed first. A FILE with no topic links prints nothing and
+exits 0; a FILE that does not exist is an error and exits 3.
+"""
+
+REPAIR_WATCH_PATHS_HELP = """\
+Apply the plugin's "directories forever" repair to each PATH, in the order
+given, and print one tab-separated line per surviving entry:
+
+    <repaired><TAB><original><TAB><status>
+
+Each entry is repaired on its own:
+
+  1. Trailing "/" and "\\" characters are stripped, then every remaining "\\"
+     becomes "/", so "src\\lib\\" and "src/lib" repair alike.
+  2. While the value does not name an existing directory -- resolved against
+     the current working directory, so the caller chooses the tree by
+     choosing where it runs this -- and still has more than one segment, its
+     last segment is dropped. A file-scoped entry is therefore widened to the
+     directory holding it, which is the accepted cost of the rule.
+  3. A single-segment value is never modified, even when nothing by that name
+     exists: the scope is preserved rather than silently discarded.
+
+Entries are then deduplicated ON THE REPAIRED VALUE with the first occurrence
+winning, so two entries that repair to the same directory print one line,
+carrying the first entry's <original>; the later duplicates print nothing.
+
+<status> is one of:
+
+    ok           the repaired value names an existing directory, or is a
+                 preserved single-segment value naming an existing file.
+    unresolved   the repaired value is a preserved single-segment value
+                 naming neither a directory nor a file. The scope is
+                 drift-blind and the plugin reports it to the user.
+
+The repair is total, so the exit code is 0 whatever the statuses are. Giving
+no PATH at all is an error and exits 3.
 """
 
 
@@ -463,6 +560,70 @@ def _classification(args):
     return "minor_mechanical"
 
 
+def cmd_hub_state(args):
+    if not os.path.exists(args.file):
+        print("absent")
+        return 0
+    managed = False
+    append_only = False
+    for line, fenced in scan_body(read_lines(args.file)):
+        if fenced:
+            continue
+        stripped = line.strip()
+        if stripped == APPEND_ONLY_MARKER:
+            append_only = True
+        elif stripped == MANAGED_MARKER:
+            managed = True
+    if append_only:
+        print("append-only")
+    else:
+        print("managed" if managed else "unmarked")
+    return 0
+
+
+def cmd_hub_links(args):
+    for line in read_lines(args.file):
+        destinations = []
+        reference = REF_LINK_RE.match(line)
+        if reference:
+            destinations.append(reference.group(1))
+        destinations.extend(m.group(1) for m in INLINE_LINK_RE.finditer(line))
+        for dest in destinations:
+            topic = _topic_link(dest, args.docs_dir)
+            if topic is not None:
+                print(topic)
+    return 0
+
+
+def _topic_link(dest, docs_dir):
+    if dest.startswith("./"):
+        dest = dest[2:]
+    if dest == docs_dir or dest.startswith(docs_dir + "/"):
+        return dest
+    return None
+
+
+def cmd_repair_watch_paths(args):
+    if not args.path:
+        die("repair-watch-paths needs at least one PATH")
+    seen = set()
+    for original in args.path:
+        repaired = _repair_watch_path(original)
+        if repaired in seen:
+            continue
+        seen.add(repaired)
+        resolved = os.path.isdir(repaired) or os.path.isfile(repaired)
+        print("%s\t%s\t%s" % (repaired, original, "ok" if resolved else "unresolved"))
+    return 0
+
+
+def _repair_watch_path(value):
+    value = value.rstrip("/\\").replace("\\", "/")
+    while "/" in value and not os.path.isdir(value):
+        value = value.rsplit("/", 1)[0]
+    return value
+
+
 def build_parser():
     parser = argparse.ArgumentParser(
         prog="scribe-lib.py",
@@ -519,6 +680,19 @@ def build_parser():
     p.add_argument("--snapshot-headings", required=True, metavar="SH")
     p.add_argument("--threshold", required=True, type=int, metavar="N")
     p.set_defaults(func=cmd_classify)
+
+    p = add("hub-state", "classify an AGENTS.md hub's marker state", HUB_STATE_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.set_defaults(func=cmd_hub_state)
+
+    p = add("hub-links", "list the topic-link destinations in a hub", HUB_LINKS_HELP)
+    p.add_argument("file", metavar="FILE")
+    p.add_argument("--docs-dir", required=True, metavar="D")
+    p.set_defaults(func=cmd_hub_links)
+
+    p = add("repair-watch-paths", "widen watch paths to existing directories", REPAIR_WATCH_PATHS_HELP)
+    p.add_argument("path", metavar="PATH", nargs="*")
+    p.set_defaults(func=cmd_repair_watch_paths)
 
     return parser
 

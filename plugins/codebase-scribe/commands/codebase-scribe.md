@@ -10,7 +10,7 @@ You are the Codebase Scribe — an agent that generates, enriches, and maintains
 
 ## Definitions (referenced throughout — defined only here)
 
-- **scribe-lib** — `python3 "$CLAUDE_PLUGIN_ROOT/scripts/scribe-lib.py"`. Canonical implementation of every deterministic computation below: `sections` (fence-aware `##`/`###` headings with slugs), `slug`, `tier`, `validate-sha`, `human-input`, `completeness`, `classify`. Each subcommand's `--help` is the canonical definition. Always use the script; if python3 is unavailable, compute the same result by those definitions manually.
+- **scribe-lib** — `python3 "$CLAUDE_PLUGIN_ROOT/scripts/scribe-lib.py"`. Canonical implementation of every deterministic computation below: `sections` (fence-aware `##`/`###` headings with slugs), `slug`, `tier`, `validate-sha`, `human-input`, `completeness`, `classify`, `hub-state`, `hub-links`, `repair-watch-paths`. Each subcommand's `--help` is the canonical definition. Always use the script; if python3 is unavailable, compute the same result by those definitions manually.
 - **Threaded fields** — `branching_strategy`, `default_branch`, `current_branch`, `shallow`, `docs_dir`, the repaired `watch_paths` (Step 3), and per-topic `tier` (Step 5). Resolved once by the orchestrator and passed in every skill and rework brief. Skills use the passed values and never re-derive them.
 - **Maturity test (`tier`)** — scribe-lib `tier`: `stub` when the body is empty or an unfenced line starts with `*Stub — will be populated`; else `mature`. `migration_source` is deliberately not part of it (a migration topic with real content is `mature` even though Step 5's `stub` row routes it for a redraft). Never derive `tier` from that routing row.
 - **Option-count rule** — AskUserQuestion allows 2–4 options. 0 candidates: nothing to ask (handle per call site). 1: ask a two-option question instead (`"<do X>?"` / `"Skip"`). 2–4: one multiSelect. 5+: consecutive multiSelect calls of ≤4 options, split so no call has a single option (5 → 3+2, never 4+1); merge the selections.
@@ -129,7 +129,7 @@ Every frontmatter write below is a partial update (see Definitions).
 
 2. **Prune orphaned inferred_sections and human_sections** — get the topic's actual headings and slugs from scribe-lib `sections --level all`. Compare each `inferred_sections` entry against actual headings *at its own level* (`##` entries against `##` headings, `###` against `###`); remove entries with no match. Remove each `human_sections` slug whose `##` heading no longer exists. **Persistence:** write both pruned lists back here, before Step 8's snapshots (so the change is not classified by Step 9). `human_sections` is committed and score-bearing — without a named writer the prune would be re-derived and discarded every run.
 
-3. **Repair `watch_paths` (directories forever)** — per entry: normalize trailing slashes; then iteratively replace by its parent until the entry is an existing directory or a single segment; dedupe. Single-segment entries are preserved as-is; a preserved single-segment entry resolving to neither directory nor file is reported in the Step 13 summary (drift-blind scopes must not be silent). Purely mechanical. Accepted consequence: a file-scoped multi-segment entry (`cmd/server/main.go`) is widened to its directory permanently. **Persistence:** write the repaired list back here, before Step 8's snapshots; it is the `watch_paths` value in every brief, and draft §10 restamps it from the brief.
+3. **Repair `watch_paths` (directories forever)** — scribe-lib `repair-watch-paths <entries...>`: trailing slashes normalized, each entry iteratively replaced by its parent until it is an existing directory or a single segment, deduped. Entries reported `unresolved` (preserved single-segment, resolving to neither directory nor file) go in the Step 13 summary — drift-blind scopes must not be silent. Accepted consequence: a file-scoped multi-segment entry (`cmd/server/main.go`) is widened to its directory permanently. **Persistence:** write the repaired list back here, before Step 8's snapshots; it is the `watch_paths` value in every brief, and draft §10 restamps it from the brief.
 
 4. **Scan-SHA validation and freshness persistence** — every non-null `scan` is validated here; `scan: null` is routed by the Step 5 rows, never a validation failure.
 
@@ -308,88 +308,8 @@ Write `.scribe/session.json`: version `1.0`, branch, `last_active_sha`, `last_ac
 
 ### Step 12: AGENTS.md hub management
 
-**Runs every time Step 12 is reached**, regardless of topic completion status or new links.
+**Runs every time Step 12 is reached.** Read `"$CLAUDE_PLUGIN_ROOT/references/hub-management.md"` with the Read tool and follow it exactly — do not act on this step from memory. It defines: policy precedence over `agents_md_policy` (12a, with scribe-lib `hub-links` link matching), the deleted-manual-hub prompt (12b), marker detection via scribe-lib `hub-state` (12c), link appending in both management modes with the stale-footer rule (12d), the ownership prompt for unmarked hubs (12e), and the hub template with its identity-read allowance (12f).
 
-#### 12a: Check policy precedence
-
-Read `agents_md_policy` (default `auto`).
-
-- `none` → skip Step 12 entirely.
-- `manual` → never modify AGENTS.md. If it does not exist, go to 12b. Otherwise, if a topic file exists with no corresponding link (see Link matching), print: "Reminder: You're managing AGENTS.md manually. There are new topic files in `<docs_dir>` not yet linked." Then skip the rest of Step 12.
-- `auto` → continue to 12c.
-
-**Link matching:** a link to a topic file is any markdown or reference-style link whose destination, after stripping a leading `./`, is exactly `docs_dir` or begins with `docs_dir` followed by `/` — whole path segments, never a bare string prefix (with `docs_dir: docs/agents`, a link into `docs/agents-old/` is not a topic link).
-
-#### 12b: Manual policy with deleted file
-
-Only when `agents_md_policy: manual` and AGENTS.md does not exist. AskUserQuestion: "Previously you chose to manage AGENTS.md manually, but the file has been deleted. What should I do?"
-1. "Create a new scribe-managed hub" — write 12f's template with `<!-- scribe:managed -->`; reset `agents_md_policy` to `auto`.
-2. "Leave it deleted" — set `agents_md_policy: none`; no file, no future prompts.
-
-Step 12 is then done for this run.
-
-#### 12c: Marker detection (policy is `auto`)
-
-A marker counts only as a **standalone line outside fenced code blocks** whose entire trimmed content is exactly `<!-- scribe:managed -->` or `<!-- scribe:managed:append-only -->` (fence rule: only the marker that opened a fence closes it). A substring match is not the test — an AGENTS.md that merely *documents* the marker (fenced example, prose, part of a longer line) carries no marker and takes the "no marker" row; a human-owned file explaining the convention must not be silently adopted.
-
-| AGENTS.md state | Route |
-|-----------------|-------|
-| Does not exist | Create hub from 12f's template with `<!-- scribe:managed -->`; append links for existing topic files. Done. |
-| Standalone unfenced `:append-only` marker | 12d, append-only mode |
-| Standalone unfenced `<!-- scribe:managed -->` (no `:append-only`) | 12d, full management mode |
-| No standalone unfenced marker | 12e, ownership prompt |
-
-#### 12d: Scribe-managed file — append topic links
-
-Append links for topic files not already linked. **Documentation-heading match** (both variants): exact `## Documentation` preferred, else first `##` heading containing "Documentation" (case-insensitive), else create `## Documentation` at the end of the file.
-
-**Append-only variant:** modify only within the matched section (from its heading to the next `##` heading or EOF).
-
-**Full management variant:** append links in the matched section. Additionally, in this variant only:
-- **ARCHITECTURE.md pointer:** if absent from the hub and `ARCHITECTURE.md` now exists, append `> For the full architecture index, see [ARCHITECTURE.md](ARCHITECTURE.md).` under `## Architecture at a Glance` if that heading is present; otherwise skip.
-- **Stale-footer removal:** only when no stubs remain, remove any line matching the seeded footer — `Generated by [codebase-scribe](https://github.com/TommasoBagassi/codebase-scribe). Run /codebase-scribe again to draft content for the stubs.` — in any of its spellings: "the stubs" or "these stubs", `/codebase-scribe` backticked or not. Exact-match against those variants; remove the matched line plus one adjacent blank line so exactly one blank line remains between the surrounding content. Append-only mode cannot reach a footer below its section, so append-only hubs keep the footer (documented gap).
-
-#### 12e: Ownership prompt (non-marker AGENTS.md)
-
-If AGENTS.md contains docs_dir links (per 12a's Link matching), use the migration framing: "This AGENTS.md appears to have been previously generated by the scribe (it links to topic files). How should I handle it?" Otherwise: "I found an existing AGENTS.md that wasn't created by the scribe. How should I handle it?"
-
-Options:
-1. **"Replace with a scribe hub"** — if `AGENTS.md.bak` exists, ask first: "Overwrite existing backup" / "Keep both (save as AGENTS.md.bak.N)" (N starts at 1) / "Cancel replacement" (Step 12 ends, no action; the prompt re-triggers next run). If not cancelled: rename AGENTS.md to the backup name, write a new hub from 12f's template, populate with topic links. On creating a backup, rewrite every topic frontmatter whose unconsumed `migration_source` names the renamed file to the backup filename (a partial update touching `migration_source` alone).
-2. **"Append topic links to the existing file"** (Recommended in the migration framing) — keep all existing content; find or create the Documentation section per 12d's heading match; add `<!-- scribe:managed:append-only -->` just above it; append topic links within it. If docs_dir has no topic files, create an empty `## Documentation` section (fills on later runs).
-3. **"Leave it alone"** — do not modify AGENTS.md; record `agents_md_policy: manual` in `.scribe.yml` (create the file if needed with only this key). Future runs print the 12a reminder, not a re-prompt.
-
-#### 12f: Hub template
-
-Used by 12b option 1, 12c ("Does not exist"), and 12e option 1:
-
-```markdown
-<!-- scribe:managed -->
-# <Project Name>
-
-<one-line project description, from README or build metadata>
-
-## Quick Reference
-
-| Action | Command |
-|--------|---------|
-| Build | `<build command>` |
-| Test | `<test command>` |
-| Run locally | `<run command>` |
-
-## Architecture at a Glance
-
-<top-level directory tree, one line per significant directory with its purpose>
-
-## Documentation
-
-- [<Topic Title>](<docs_dir>/<topic>.md) — <topic TL;DR>
-
-## Conventions
-
-Conventions are documented per topic — see the Documentation links above.
-```
-
-Unknown cells: "see build files". Include the ARCHITECTURE.md pointer line (as in 12d) when the file exists at write time. **Identity-read allowance** — at the three call sites where Step 2 never ran, read the repo README and root build file first (12e option 1 may also read the backup it just created); bounded to those reads.
 
 ### Step 13: Summary
 
