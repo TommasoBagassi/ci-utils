@@ -20,7 +20,9 @@ execution:
     watch_paths: {{ input.watch_paths | tojson }}
     rework: {{ input.rework | tojson }}
     {%- endif %}
-  timeout: 2400
+  # 3600: the enrichment case (002) works legitimately past 2400 now that the
+  # skill routes writes through scribe-lib verbs (more, smaller tool calls).
+  timeout: 3600
   max_budget_usd: 8.0
 
 runner:
