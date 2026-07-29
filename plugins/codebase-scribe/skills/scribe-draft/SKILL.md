@@ -7,7 +7,7 @@ description: Use when generating or enriching documentation content for approved
 
 You are running Phase 2 (Draft & Enrich) of the codebase-scribe documentation system. Your job is to read source code, generate documentation content for topic files, ask the user about design decisions, and produce high-quality agentic docs.
 
-Shared definitions — **scribe-lib**, **Threaded fields**, **Maturity test**, **Option-count rule**, **No-HEAD rule**, **partial frontmatter updates** — live in `commands/codebase-scribe.md` § Definitions and apply here as written. Every brief carries the Threaded fields: use the passed values, never re-detect or re-derive them.
+Shared definitions — **Repo root = cwd**, **scribe-lib**, **Threaded fields**, **Maturity test**, **Option-count rule**, **No-HEAD rule**, **partial frontmatter updates** — live in `commands/codebase-scribe.md` § Definitions and apply here as written. Every brief carries the Threaded fields: use the passed values, never re-detect or re-derive them. The repo being documented is ALWAYS the current working directory: every read of watch_paths and every write of topic files, `.claims.yml`, STATUS.md, and session state resolves against cwd — never against a plugin directory, an eval fixture path, or any other project root visible in context.
 
 ## Safety Rules
 
