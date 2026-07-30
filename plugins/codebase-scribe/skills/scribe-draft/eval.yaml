@@ -525,15 +525,17 @@ thresholds:
 # admitting one failure would let exactly those regress silently. (The figure
 # speaks for this suite only: sibling suites size their own thresholds.)
 #
-# Three judges run at an accepted-baseline threshold instead (owner decision,
-# 2026-07-29, after the first executed runs of this suite): the model drops
-# steps in multi-write bookkeeping sequences — claims extraction when
-# .claims.yml must be created (cases 001/003), question-pass crediting and
-# counter (003), and part of the decision-retire write sequence (004) — and
-# one round of targeted prompt fixes did not close them. 0.6 = the measured
-# 3-of-5 baseline; it still catches any NEW failure. The intended proper fix
-# is a scribe-lib frontmatter writer (enforced writes), at which point these
-# return to 1.0.
+# Three judges run at an accepted-baseline threshold instead (owner decision
+# 2026-07-29, reaffirmed 2026-07-30 after the state-writer wave): the failing
+# behaviors are multi-write bookkeeping sequences — claims extraction when
+# .claims.yml must be created, question-pass crediting and counter, the
+# decision-retire sequence. scribe-lib's fm/claims verbs make each a single
+# enforced call and cases pass when the session invokes them (verified), but
+# invocation itself proved run-to-run variant for the pinned case model in
+# one-shot isolation, surviving prompt-side fixes (inline invocation recipe,
+# run-never-read, HARD RULE 5). 0.6 = the measured floor; any NEW failure
+# class still trips it. Revisit on a case-model bump or if the orchestrator
+# gains post-condition enforcement.
   budget_check:
     min_pass_rate: 1.0
   two_tier_structure:
