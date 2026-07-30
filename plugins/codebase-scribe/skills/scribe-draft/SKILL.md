@@ -30,7 +30,7 @@ When the brief contains `rework: true`, follow this targeted-edit pipeline inste
 3. **Apply targeted edits.** `MISSING_REF`: find the correct path (`git log --diff-filter=R` for renames, `find` for relocations) and update. `CONTRADICTION`: read the cited source, rewrite the statement to match the code. `INCONSISTENCY`: resolve toward the section that matches source. `WRONG_FILE`: correct the attribution. `DEPRECATED`: remove or replace with the current pattern.
 4. **Preserve unaffected content.** Change only what the findings require.
 5. **Skip all questions** (§5, §6, §7). Rework is mechanical correction.
-6. **Stamp only.** `fm stamp <topic> --scan <HEAD> --freshness 100`; do NOT recalculate `human_input` or `completeness`. Under `main-only` when `current_branch` != `default_branch`, or under the No-HEAD rule, skip the call entirely. Rework never reaches §10, and the verbs only touch what they name, so every other frontmatter key survives verbatim.
+6. **Freshness only.** `fm update <topic> --json '{"freshness": 100}'` — rework never advances `scan` (that is 9f's stamp, after re-review) and does NOT recalculate `human_input` or `completeness`. Under `main-only` when `current_branch` != `default_branch`, or under the No-HEAD rule, skip the call entirely. Rework never reaches §10, and the verb only touches what it names, so every other frontmatter key survives verbatim.
 7. **Re-extract claims for changed sections** per §11's ID stability rules; preserve claims for unmodified sections.
 8. **Validate output** per §12 — except `human_input` and `completeness`, which rework preserves (step 6); the `freshness` check still applies.
 9. **Save session progress:** mark the topic `rework_pass_<iteration>` in session.json.
@@ -230,7 +230,7 @@ Write the markdown content per §3, leaving the existing frontmatter block byte-
 
 **Preservation clause (canonical list):** `fm update` touches only the keys its `--json`/`--unset` name — so every other key survives verbatim by construction: `decisions`, `question_passes`, `human_sections`, `review_notes`, and any other keys present (HARD RULE 4's `credit-section` is `human_sections`' named writer).
 
-If `review.enabled: false` **and this is a full draft — never a question pass**, apply the Settling reset here. A question pass reaches §10 too (writing its incremented counter); resetting would undo that increment and re-open the same question forever.
+If `review.enabled: false` **and this is a full draft — never a question pass**, apply the Settling reset here. A question pass reaches §10 too (its counter already persisted by `fm question-pass`); resetting would undo that increment and re-open the same question forever.
 
 ### 11. Extract Claims
 
